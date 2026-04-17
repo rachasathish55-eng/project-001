@@ -1,0 +1,19 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "pipeline": {
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "dist/**",
+        "build/**",
+        "src-tauri/target/**"
+      ]
+    },
+    "dev": {
+      "cache": false
+    },
+    "lint": {}
+  }
+}

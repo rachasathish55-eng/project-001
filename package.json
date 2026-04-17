@@ -1,0 +1,9 @@
+{
+  "name": "project-001",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "packageManager": "pnpm@9.15.4"
+}
