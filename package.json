@@ -5,5 +5,5 @@
   "workspaces": [
     "packages/*"
   ],
-  "packageManager": "pnpm@9.15.4"
+  "packageManager": "npm@10.0.0"
 }

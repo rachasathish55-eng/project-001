@@ -2,7 +2,7 @@
 
 project-001 is the first scaffold for the Strawberry desktop platform.
 
-It uses a pnpm monorepo layout so app, agent, and shared code can evolve together.
+It uses an npm workspace layout so app, agent, and shared code can evolve together.
 
 The desktop client will live in `packages/app`.
 
@@ -23,8 +23,6 @@ This repository starts intentionally small so the next implementation steps stay
 Future work can add per-package scripts, Rust configuration, and frontend build tooling.
 
 The root `package.json` defines the workspace boundary for all packages under `packages/*`.
-
-`pnpm-workspace.yaml` mirrors that layout for pnpm.
 
 The scaffold is ready for incremental development.
 
