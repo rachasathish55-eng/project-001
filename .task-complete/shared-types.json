@@ -1,0 +1,1 @@
+{"task_id":"shared-types","status":"done","files_created":["packages/shared/src/index.ts","packages/shared/tsconfig.json"],"summary":"Shared TS types defined for node model and worker protocol."}
