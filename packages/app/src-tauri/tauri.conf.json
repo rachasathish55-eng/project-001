@@ -1,0 +1,29 @@
+{
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build",
+    "devPath": "http://localhost:1420",
+    "distDir": "../dist"
+  },
+  "package": {
+    "productName": "Strawberry Studios",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "bundle": {
+      "identifier": "com.strawberry.studios"
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "Strawberry Studios",
+        "width": 1280,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true,
+        "backgroundColor": "#0f1115"
+      }
+    ]
+  }
+}

@@ -1,0 +1,65 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  background: #0f1115;
+  color: #f5f7fa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background:
+    radial-gradient(circle at top, rgba(177, 85, 137, 0.22), transparent 28%),
+    linear-gradient(180deg, #12141b 0%, #0b0d12 100%);
+}
+
+.app-shell {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+}
+
+.card {
+  width: min(560px, 100%);
+  padding: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  background: rgba(13, 16, 22, 0.86);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(20px);
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: #ffb7d5;
+  font-size: 0.8rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3.25rem);
+  line-height: 1.05;
+}
+
+.description {
+  margin: 16px 0 0;
+  max-width: 40ch;
+  color: rgba(245, 247, 250, 0.76);
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
