@@ -1,0 +1,1 @@
+{"task_id":"tauri-shell","status":"done","files_created":["packages/app/src-tauri/tauri.conf.json","packages/app/src/App.tsx"],"summary":"Basic Tauri shell with Vite/React/TS initialized."}
