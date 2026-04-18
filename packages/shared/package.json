@@ -1,5 +1,8 @@
 {
   "name": "@strawberry/shared",
   "version": "0.1.0",
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
 }
