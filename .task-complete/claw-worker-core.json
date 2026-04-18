@@ -1,0 +1,1 @@
+{"task_id":"claw-worker-core","status":"done","files_created":["packages/agent/claw_worker.py","packages/agent/requirements.txt","packages/agent/install.sh","packages/agent/test_worker.py"],"summary":"Claw Worker daemon built with WebSocket API supporting 5 commands. Tests pass."}
