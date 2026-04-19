@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { StrawberryNode, StrawberryNodeStatus } from "@strawberry/shared";
+import { appendTerminalLogEntries, type TerminalLogEntry } from "../lib/terminal-logs";
 
 export interface WorkerStats {
   ts: number;
@@ -16,6 +17,7 @@ export interface StoreState {
   edges: any[];
   workerStats: WorkerStats | null;
   connectionState: "disconnected" | "connecting" | "connected" | "reconnecting";
+  terminalEntries: TerminalLogEntry[];
   addNode: (node: StrawberryNode) => void;
   updateNode: (id: string, updates: Partial<StrawberryNode>) => void;
   deleteNode: (id: string) => void;
@@ -23,6 +25,8 @@ export interface StoreState {
   setEdges: (edges: any[]) => void;
   updateNodeStatus: (id: string, status: StrawberryNodeStatus) => void;
   appendOutput: (id: string, stream: "stdout" | "stderr", chunk: string) => void;
+  appendTerminalEntries: (entries: TerminalLogEntry[]) => void;
+  clearTerminalEntries: () => void;
   setWorkerStats: (stats: WorkerStats) => void;
   setConnectionState: (state: StoreState["connectionState"]) => void;
 }
@@ -35,6 +39,7 @@ export const useStore = create<StoreState>((set) => ({
   edges: [],
   workerStats: null,
   connectionState: "disconnected",
+  terminalEntries: [],
   addNode: (node) =>
     set((state) => ({
       nodes: [...state.nodes, node],
@@ -79,6 +84,14 @@ export const useStore = create<StoreState>((set) => ({
           lastError: appendChunk(node.lastError, chunk),
         };
       }),
+    })),
+  appendTerminalEntries: (entries) =>
+    set((state) => ({
+      terminalEntries: appendTerminalLogEntries(state.terminalEntries, entries),
+    })),
+  clearTerminalEntries: () =>
+    set(() => ({
+      terminalEntries: [],
     })),
   setWorkerStats: (stats) =>
     set(() => ({

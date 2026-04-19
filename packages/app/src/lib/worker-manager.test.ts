@@ -72,6 +72,7 @@ describe("WorkerManager", () => {
       edges: [],
       workerStats: null,
       connectionState: "disconnected",
+      terminalEntries: [],
     });
     useStore.getState().addNode(createNode("node-1"));
     socket = new FakeSocket();
@@ -106,6 +107,13 @@ describe("WorkerManager", () => {
       expect.objectContaining({
         status: "running",
         lastOutput: "hello\n",
+      }),
+    );
+    expect(useStore.getState().terminalEntries.at(-1)).toEqual(
+      expect.objectContaining({
+        stream: "stdout",
+        text: "hello",
+        nodeId: "node-1",
       }),
     );
 

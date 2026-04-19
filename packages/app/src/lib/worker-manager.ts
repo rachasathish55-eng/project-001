@@ -8,6 +8,7 @@ import type {
   WorkerTelemetryEvent,
 } from "@strawberry/shared";
 import { useStore } from "../store/useStore";
+import { createTerminalLogEntry, splitTerminalChunk } from "./terminal-logs";
 
 type WorkerSocketLike = Pick<WebSocket, "close" | "send" | "addEventListener" | "removeEventListener"> & {
   readyState: number;
@@ -67,6 +68,7 @@ export class WorkerManager {
   private readonly outboundQueue: WorkerOutboundMessage[] = [];
   private readonly pendingCommands = new Map<string, PendingCommand>();
   private readonly executionsByNodeId = new Map<string, ActiveExecution>();
+  private readonly streamRemainders = new Map<string, { stdout: string; stderr: string }>();
 
   constructor(options: WorkerManagerOptions = {}) {
     this.url = options.url ?? DEFAULT_URL;
@@ -240,6 +242,7 @@ export class WorkerManager {
   private handleDisconnect(reason: string): void {
     const activeNodeIds = [...this.executionsByNodeId.keys()];
     for (const nodeId of activeNodeIds) {
+      this.flushStreamRemainders(nodeId);
       useStore.getState().updateNode(nodeId, {
         status: "stopped",
         lastError: `Worker disconnected: ${reason}`,
@@ -372,6 +375,7 @@ export class WorkerManager {
       status: "running",
     });
     state.appendOutput(nodeId, stream, data);
+    this.appendTerminalStream(nodeId, stream, data);
   }
 
   private handleCompletion(message: WorkerExitEvent | Record<string, unknown>): void {
@@ -397,6 +401,8 @@ export class WorkerManager {
       console.warn("WorkerManager received completion without node id", message);
       return;
     }
+
+    this.flushStreamRemainders(nodeId);
 
     const exitCode = pickNumber(payload.exit_code ?? payload.exitCode ?? (message as Record<string, unknown>).exit_code ?? (message as Record<string, unknown>).exitCode);
 
@@ -516,5 +522,69 @@ export class WorkerManager {
   private nextCommandId(): string {
     this.commandSequence += 1;
     return `worker-${Date.now()}-${this.commandSequence}`;
+  }
+
+  private appendTerminalStream(nodeId: string, stream: "stdout" | "stderr", data: string): void {
+    const remainder = this.streamRemainders.get(nodeId) ?? { stdout: "", stderr: "" };
+    const split = splitTerminalChunk(data, remainder[stream]);
+    remainder[stream] = split.remainder;
+    this.streamRemainders.set(nodeId, remainder);
+
+    if (split.lines.length === 0) {
+      return;
+    }
+
+    const node = useStore.getState().nodes.find((entry) => entry.id === nodeId);
+    const entries = split.lines.map((text) =>
+      createTerminalLogEntry({
+        ts: Date.now(),
+        stream,
+        text,
+        nodeId,
+        nodeName: node?.name,
+        workerId: this.workerId,
+      }),
+    );
+
+    useStore.getState().appendTerminalEntries(entries);
+  }
+
+  private flushStreamRemainders(nodeId: string): void {
+    const remainder = this.streamRemainders.get(nodeId);
+    if (!remainder) {
+      return;
+    }
+
+    const node = useStore.getState().nodes.find((entry) => entry.id === nodeId);
+    const entries: ReturnType<typeof createTerminalLogEntry>[] = [];
+
+    if (remainder.stdout.length > 0) {
+      entries.push(
+        createTerminalLogEntry({
+          ts: Date.now(),
+          stream: "stdout",
+          text: remainder.stdout,
+          nodeId,
+          nodeName: node?.name,
+          workerId: this.workerId,
+        }),
+      );
+    }
+
+    if (remainder.stderr.length > 0) {
+      entries.push(
+        createTerminalLogEntry({
+          ts: Date.now(),
+          stream: "stderr",
+          text: remainder.stderr,
+          nodeId,
+          nodeName: node?.name,
+          workerId: this.workerId,
+        }),
+      );
+    }
+
+    useStore.getState().appendTerminalEntries(entries);
+    this.streamRemainders.delete(nodeId);
   }
 }

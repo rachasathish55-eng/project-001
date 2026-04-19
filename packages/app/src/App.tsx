@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import Canvas from "./components/Editor/Canvas";
+import TerminalPanel from "./components/TerminalPanel";
 import { WorkerManager } from "./lib/worker-manager";
 import { useStore } from "./store/useStore";
 
@@ -52,23 +53,27 @@ export default function App() {
         </div>
       </header>
 
-      <section className="editor-shell">
-        <aside className="editor-sidebar">
-          <span className="editor-sidebar__label">Canvas</span>
-          <h2>Flow-based notebook editing</h2>
-          <p>
-            Each node is draggable, connectable, and mirrors live status from the Claw Worker daemon.
-          </p>
-          <ul>
-            <li>Left handle = incoming data</li>
-            <li>Right handle = outgoing data</li>
-            <li>Status badges update in real time</li>
-          </ul>
-        </aside>
+      <section className="workspace-shell">
+        <section className="editor-shell">
+          <aside className="editor-sidebar">
+            <span className="editor-sidebar__label">Canvas</span>
+            <h2>Flow-based notebook editing</h2>
+            <p>
+              Each node is draggable, connectable, and mirrors live status from the Claw Worker daemon.
+            </p>
+            <ul>
+              <li>Left handle = incoming data</li>
+              <li>Right handle = outgoing data</li>
+              <li>Status badges update in real time</li>
+            </ul>
+          </aside>
 
-        <div className="editor-canvas">
-          <Canvas />
-        </div>
+          <div className="editor-canvas">
+            <Canvas />
+          </div>
+        </section>
+
+        <TerminalPanel />
       </section>
     </main>
   );

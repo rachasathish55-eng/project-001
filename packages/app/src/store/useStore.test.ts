@@ -24,7 +24,13 @@ function createNode(id: string, overrides: Partial<StrawberryNode> = {}): Strawb
 
 describe("useStore", () => {
   beforeEach(() => {
-    useStore.setState({ nodes: [], edges: [], workerStats: null, connectionState: "disconnected" });
+    useStore.setState({
+      nodes: [],
+      edges: [],
+      workerStats: null,
+      connectionState: "disconnected",
+      terminalEntries: [],
+    });
   });
 
   it("adds, updates, and deletes nodes", () => {
@@ -92,6 +98,41 @@ describe("useStore", () => {
       lastHeartbeatAt: 456,
     });
     expect(useStore.getState().connectionState).toBe("connected");
+  });
+
+  it("stores terminal entries with a fixed capacity", () => {
+    useStore.getState().appendTerminalEntries([
+      {
+        id: "terminal-1",
+        ts: 1,
+        stream: "stdout",
+        text: "hello",
+        nodeId: "node-1",
+        nodeName: "Node 1",
+      },
+    ]);
+
+    expect(useStore.getState().terminalEntries).toEqual([
+      expect.objectContaining({
+        text: "hello",
+        nodeName: "Node 1",
+      }),
+    ]);
+  });
+
+  it("drops the oldest terminal entries past the buffer limit", () => {
+    useStore.getState().appendTerminalEntries(
+      Array.from({ length: 1001 }, (_, index) => ({
+        id: `terminal-${index}`,
+        ts: index,
+        stream: "stdout" as const,
+        text: `line-${index}`,
+      })),
+    );
+
+    expect(useStore.getState().terminalEntries).toHaveLength(1000);
+    expect(useStore.getState().terminalEntries[0]?.text).toBe("line-1");
+    expect(useStore.getState().terminalEntries.at(-1)?.text).toBe("line-1000");
   });
 });
 
