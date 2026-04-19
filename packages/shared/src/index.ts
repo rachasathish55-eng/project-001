@@ -129,3 +129,94 @@ export type WorkerEvent =
   | WorkerStreamEvent
   | WorkerResultEvent
   | WorkerErrorEvent;
+
+export interface WorkerConnectionStateEvent {
+  type: "connected" | "disconnected" | "reconnecting";
+  ts?: number;
+  reason?: string;
+}
+
+export interface WorkerIdentityEvent {
+  type: "identity";
+  worker_id?: string;
+  workerId?: string;
+  hostname?: string;
+  pid?: number;
+  version?: string;
+}
+
+export interface WorkerTelemetryEvent {
+  type: "telemetry";
+  ts: number;
+  cpu_pct: number;
+  mem_pct: number;
+}
+
+export interface WorkerPongEvent {
+  type: "pong";
+  ts?: number;
+}
+
+export interface WorkerRealtimeStreamEvent {
+  type: "stdout" | "stderr";
+  node_id?: string;
+  nodeId?: string;
+  data: string;
+  id?: string;
+}
+
+export interface WorkerExitEvent {
+  type: "exit";
+  node_id?: string;
+  nodeId?: string;
+  exit_code?: number;
+  exitCode?: number;
+  signal?: string | null;
+  stopped?: boolean;
+  id?: string;
+}
+
+export interface WorkerPingMessage {
+  type: "ping";
+  ts?: number;
+}
+
+export interface WorkerExecCommand {
+  id: string;
+  type: "command";
+  command: "run_script" | "exec";
+  data: {
+    code: string;
+    node_id?: string;
+    nodeId?: string;
+  };
+}
+
+export interface WorkerKillCommand {
+  id: string;
+  type: "command";
+  command: "stop_script" | "kill";
+  data: {
+    node_id?: string;
+    nodeId?: string;
+    script_id?: string;
+    scriptId?: string;
+  };
+}
+
+export interface WorkerStatusCommand {
+  id: string;
+  type: "request";
+  command: "get_status" | "status";
+  data: Record<string, never>;
+}
+
+export type WorkerOutboundMessage = WorkerPingMessage | WorkerExecCommand | WorkerKillCommand | WorkerStatusCommand;
+export type WorkerIncomingMessage =
+  | WorkerEvent
+  | WorkerIdentityEvent
+  | WorkerTelemetryEvent
+  | WorkerPongEvent
+  | WorkerRealtimeStreamEvent
+  | WorkerExitEvent
+  | WorkerConnectionStateEvent;

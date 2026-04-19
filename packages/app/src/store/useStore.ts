@@ -1,24 +1,40 @@
 import { create } from "zustand";
 import type { StrawberryNode, StrawberryNodeStatus } from "@strawberry/shared";
 
+export interface WorkerStats {
+  ts: number;
+  cpuPct: number;
+  memPct: number;
+  workerId: string | null;
+  lastHeartbeatAt: number | null;
+}
+
 type EdgeLike = { source?: string; target?: string; from?: string; to?: string };
 
 export interface StoreState {
   nodes: StrawberryNode[];
   edges: any[];
+  workerStats: WorkerStats | null;
+  connectionState: "disconnected" | "connecting" | "connected" | "reconnecting";
   addNode: (node: StrawberryNode) => void;
   updateNode: (id: string, updates: Partial<StrawberryNode>) => void;
   deleteNode: (id: string) => void;
   setNodes: (nodes: StrawberryNode[]) => void;
   setEdges: (edges: any[]) => void;
   updateNodeStatus: (id: string, status: StrawberryNodeStatus) => void;
+  appendOutput: (id: string, stream: "stdout" | "stderr", chunk: string) => void;
+  setWorkerStats: (stats: WorkerStats) => void;
+  setConnectionState: (state: StoreState["connectionState"]) => void;
 }
 
 const touchesNode = (edge: EdgeLike, nodeId: string) => edge.source === nodeId || edge.target === nodeId || edge.from === nodeId || edge.to === nodeId;
+const appendChunk = (existing: string | null | undefined, chunk: string) => (existing && existing.length > 0 ? `${existing}${chunk}` : chunk);
 
 export const useStore = create<StoreState>((set) => ({
   nodes: [],
   edges: [],
+  workerStats: null,
+  connectionState: "disconnected",
   addNode: (node) =>
     set((state) => ({
       nodes: [...state.nodes, node],
@@ -43,5 +59,33 @@ export const useStore = create<StoreState>((set) => ({
   updateNodeStatus: (id, status) =>
     set((state) => ({
       nodes: state.nodes.map((node) => (node.id === id ? { ...node, status } : node)),
+    })),
+  appendOutput: (id, stream, chunk) =>
+    set((state) => ({
+      nodes: state.nodes.map((node) => {
+        if (node.id !== id) {
+          return node;
+        }
+
+        if (stream === "stdout") {
+          return {
+            ...node,
+            lastOutput: appendChunk(node.lastOutput, chunk),
+          };
+        }
+
+        return {
+          ...node,
+          lastError: appendChunk(node.lastError, chunk),
+        };
+      }),
+    })),
+  setWorkerStats: (stats) =>
+    set(() => ({
+      workerStats: stats,
+    })),
+  setConnectionState: (state) =>
+    set(() => ({
+      connectionState: state,
     })),
 }));

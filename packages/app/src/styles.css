@@ -63,3 +63,39 @@ h1 {
   font-size: 1.05rem;
   line-height: 1.6;
 }
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 28px;
+}
+
+.status-grid > div {
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.status-label {
+  display: block;
+  margin-bottom: 8px;
+  color: rgba(245, 247, 250, 0.6);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.status-grid strong {
+  display: block;
+  font-size: 1rem;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+@media (max-width: 720px) {
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
+}
