@@ -132,9 +132,15 @@ class ClientConnection(_BaseConnection):
 
 
 class _ConnectContext:
-    def __init__(self, uri: str, extra_headers: Any = None, max_size: int | None = None):
+    def __init__(
+        self,
+        uri: str,
+        additional_headers: Any = None,
+        extra_headers: Any = None,
+        max_size: int | None = None,
+    ):
         self.uri = uri
-        self.extra_headers = extra_headers
+        self.extra_headers = additional_headers if additional_headers is not None else extra_headers
         self.max_size = max_size
         self.connection: ClientConnection | None = None
 
@@ -240,8 +246,18 @@ class _ServeContext:
                 await writer.wait_closed()
 
 
-def connect(uri: str, extra_headers: Any = None, max_size: int | None = None):
-    return _ConnectContext(uri, extra_headers=extra_headers, max_size=max_size)
+def connect(
+    uri: str,
+    additional_headers: Any = None,
+    extra_headers: Any = None,
+    max_size: int | None = None,
+):
+    return _ConnectContext(
+        uri,
+        additional_headers=additional_headers,
+        extra_headers=extra_headers,
+        max_size=max_size,
+    )
 
 
 def serve(handler, host: str, port: int, max_size: int | None = None):

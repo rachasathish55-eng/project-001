@@ -1,13 +1,10 @@
 import type {
   WorkerExitEvent,
-  WorkerExecCommand,
   WorkerIdentityEvent,
   WorkerIncomingMessage,
-  WorkerKillCommand,
   WorkerOutboundMessage,
   WorkerPongEvent,
   WorkerRealtimeStreamEvent,
-  WorkerStatusCommand,
   WorkerTelemetryEvent,
 } from "@strawberry/shared";
 import { useStore } from "../store/useStore";
@@ -59,6 +56,7 @@ export class WorkerManager {
   private readonly reconnectBaseDelayMs: number;
   private readonly reconnectMaxDelayMs: number;
   private readonly socketFactory: SocketFactory;
+  private readonly canAttemptReconnect: boolean;
   private socket: WorkerSocketLike | null = null;
   private reconnectTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof globalThis.setInterval> | null = null;
@@ -75,6 +73,7 @@ export class WorkerManager {
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_MS;
     this.reconnectBaseDelayMs = options.reconnectBaseDelayMs ?? DEFAULT_RECONNECT_BASE_MS;
     this.reconnectMaxDelayMs = options.reconnectMaxDelayMs ?? DEFAULT_RECONNECT_MAX_MS;
+    this.canAttemptReconnect = typeof options.socketFactory === "function" || typeof globalThis.WebSocket === "function";
     this.socketFactory = options.socketFactory ?? ((url) => {
       if (typeof globalThis.WebSocket !== "function") {
         return null;
@@ -179,7 +178,11 @@ export class WorkerManager {
 
     const socket = this.socketFactory(this.url);
     if (!socket) {
-      this.scheduleReconnect();
+      if (this.canAttemptReconnect) {
+        this.scheduleReconnect();
+      } else {
+        useStore.getState().setConnectionState("disconnected");
+      }
       return;
     }
 
@@ -191,6 +194,7 @@ export class WorkerManager {
         return;
       }
 
+      this.clearReconnectTimer();
       this.reconnectAttempts = 0;
       useStore.getState().setConnectionState("connected");
       this.flushQueue();
@@ -353,9 +357,10 @@ export class WorkerManager {
   }
 
   private handleStream(message: WorkerRealtimeStreamEvent | Record<string, unknown>): void {
-    const nodeId = pickNodeId(message, typeof message.id === "string" ? this.executionsByNodeId.get(message.id)?.nodeId : undefined);
+    const pendingNodeId = typeof message.id === "string" ? this.pendingCommands.get(message.id)?.nodeId : undefined;
+    const nodeId = pickNodeId(message, pendingNodeId);
     const data = typeof message.data === "string" ? message.data : "";
-    const stream = message.type === "stderr" ? "stderr" : "stdout";
+    const stream = message.type === "stderr" || message.stream === "stderr" ? "stderr" : "stdout";
 
     if (!nodeId) {
       console.warn("WorkerManager received stream without node id", message);
@@ -372,14 +377,6 @@ export class WorkerManager {
   private handleCompletion(message: WorkerExitEvent | Record<string, unknown>): void {
     const pending = typeof message.id === "string" ? this.pendingCommands.get(message.id) : undefined;
     const payload = message && typeof message === "object" && message.data && typeof message.data === "object" ? (message.data as Record<string, unknown>) : message;
-    const fallbackNodeId = typeof message.id === "string" ? this.executionsByNodeId.get(message.id)?.nodeId : undefined;
-    const nodeId = pickNodeId(payload, pending?.nodeId ?? fallbackNodeId);
-    if (!nodeId) {
-      console.warn("WorkerManager received completion without node id", message);
-      return;
-    }
-
-    const exitCode = pickNumber(payload.exit_code ?? payload.exitCode ?? (message as Record<string, unknown>).exit_code ?? (message as Record<string, unknown>).exitCode);
     const hasTelemetryShape =
       typeof payload.ts === "number" && typeof payload.cpu_pct === "number" && typeof payload.mem_pct === "number";
     if (pending?.kind === "status" || hasTelemetryShape) {
@@ -394,6 +391,14 @@ export class WorkerManager {
       }
       return;
     }
+
+    const nodeId = pickNodeId(payload, pending?.nodeId);
+    if (!nodeId) {
+      console.warn("WorkerManager received completion without node id", message);
+      return;
+    }
+
+    const exitCode = pickNumber(payload.exit_code ?? payload.exitCode ?? (message as Record<string, unknown>).exit_code ?? (message as Record<string, unknown>).exitCode);
 
     const stopped = Boolean(payload.stopped) || (message.type === "result" && typeof exitCode === "number" && exitCode !== 0 && typeof payload.signal === "undefined");
     const resolvedExitCode = exitCode ?? 0;
@@ -419,7 +424,7 @@ export class WorkerManager {
   }
 
   private handleWorkerError(message: Record<string, unknown>): void {
-    const nodeId = pickNodeId(message, typeof message.id === "string" ? this.executionsByNodeId.get(message.id)?.nodeId : undefined);
+    const nodeId = pickNodeId(message, typeof message.id === "string" ? this.pendingCommands.get(message.id)?.nodeId : undefined);
     const errorMessage = typeof message.message === "string" ? message.message : "Worker error";
 
     if (nodeId) {

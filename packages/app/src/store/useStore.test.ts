@@ -24,7 +24,7 @@ function createNode(id: string, overrides: Partial<StrawberryNode> = {}): Strawb
 
 describe("useStore", () => {
   beforeEach(() => {
-    useStore.setState({ nodes: [], edges: [] });
+    useStore.setState({ nodes: [], edges: [], workerStats: null, connectionState: "disconnected" });
   });
 
   it("adds, updates, and deletes nodes", () => {
@@ -62,6 +62,36 @@ describe("useStore", () => {
 
     expect(useStore.getState().nodes).toEqual(nodes);
     expect(useStore.getState().edges).toEqual(edges);
+  });
+
+  it("appends output and stores worker stats", () => {
+    const node = createNode("node-1");
+    useStore.getState().addNode(node);
+    useStore.getState().appendOutput("node-1", "stdout", "hello");
+    useStore.getState().appendOutput("node-1", "stderr", "oops");
+    useStore.getState().setWorkerStats({
+      ts: 123,
+      cpuPct: 42,
+      memPct: 17,
+      workerId: "worker-1",
+      lastHeartbeatAt: 456,
+    });
+    useStore.getState().setConnectionState("connected");
+
+    expect(useStore.getState().nodes[0]).toEqual(
+      expect.objectContaining({
+        lastOutput: "hello",
+        lastError: "oops",
+      }),
+    );
+    expect(useStore.getState().workerStats).toEqual({
+      ts: 123,
+      cpuPct: 42,
+      memPct: 17,
+      workerId: "worker-1",
+      lastHeartbeatAt: 456,
+    });
+    expect(useStore.getState().connectionState).toBe("connected");
   });
 });
 

@@ -26,7 +26,7 @@ async def wait_for_server(token: str) -> None:
         try:
             async with websockets.connect(
                 "ws://127.0.0.1:7331",
-                extra_headers={"Authorization": f"Bearer {token}"},
+                additional_headers={"Authorization": f"Bearer {token}"},
                 max_size=None,
             ) as websocket:
                 await websocket.close()
@@ -58,7 +58,7 @@ async def main() -> None:
 
         async with websockets.connect(
             "ws://127.0.0.1:7331",
-            extra_headers={"Authorization": f"Bearer {token}"},
+            additional_headers={"Authorization": f"Bearer {token}"},
             max_size=None,
         ) as websocket:
             await websocket.send(
