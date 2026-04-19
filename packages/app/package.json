@@ -12,8 +12,10 @@
   "dependencies": {
     "@strawberry/shared": "workspace:^",
     "@tauri-apps/api": "^2.10.1",
+    "framer-motion": "12.38.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "reactflow": "11.11.4",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
