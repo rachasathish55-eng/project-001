@@ -4,7 +4,7 @@ import { appendTerminalLogEntries, type TerminalLogEntry } from "../lib/terminal
 import { topologicalSort } from "./utils";
 
 export interface PipelineWorkerManager {
-  exec: (nodeId: string, code: string) => string;
+  exec: (nodeId: string, code: string, workerId?: string | null) => string;
 }
 
 export interface WorkerStats {
@@ -20,7 +20,8 @@ export interface WorkerStats {
 
 export interface WorkerRecord extends WorkerStats {
   id: string;
-  status: "online" | "offline";
+  url: string;
+  status: "online" | "offline" | "connecting" | "reconnecting";
   pid: number | null;
   version: string | null;
 }
@@ -57,6 +58,9 @@ const appendChunk = (existing: string | null | undefined, chunk: string) => (exi
 const clampPercent = (value: number | null | undefined) => (typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0);
 const normalizeNullableString = (value: string | null | undefined) => (typeof value === "string" && value.trim().length > 0 ? value : null);
 const finalPipelineStatuses = new Set<StrawberryNodeStatus>(["success", "error", "stopped"]);
+const activeWorkerStatuses = new Set<WorkerRecord["status"]>(["online", "connecting", "reconnecting"]);
+
+const pickPrimaryWorker = (workers: WorkerRecord[]) => sortWorkers(workers).find((worker) => activeWorkerStatuses.has(worker.status)) ?? null;
 
 function waitForNodeStatus(nodeId: string): Promise<StrawberryNodeStatus> {
   const currentStatus = useStore.getState().nodes.find((node) => node.id === nodeId)?.status;
@@ -81,11 +85,18 @@ function createPipelineError(nodeId: string, status: StrawberryNodeStatus): Erro
 
 const sortWorkers = (workers: WorkerRecord[]) =>
   [...workers].sort((left, right) => {
-    if (left.status !== right.status) {
-      return left.status === "online" ? -1 : 1;
+    const rank: Record<WorkerRecord["status"], number> = {
+      online: 0,
+      connecting: 1,
+      reconnecting: 2,
+      offline: 3,
+    };
+
+    if (rank[left.status] !== rank[right.status]) {
+      return rank[left.status] - rank[right.status];
     }
 
-    return left.hostname.localeCompare(right.hostname) || left.id.localeCompare(right.id);
+    return left.hostname.localeCompare(right.hostname) || left.url.localeCompare(right.url) || left.id.localeCompare(right.id);
   });
 
 export const useStore = create<StoreState>((set) => ({
@@ -163,6 +174,13 @@ export const useStore = create<StoreState>((set) => ({
 
     const orderedNodeIds = topologicalSort(state.nodes, state.edges as EdgeLike[]);
     const nodesById = new Map(state.nodes.map((node) => [node.id, node] as const));
+    const workersById = new Map(
+      state.workers.flatMap((worker) => [
+        [worker.id, worker],
+        [worker.workerId, worker],
+        [worker.url, worker],
+      ]) as Array<[string | null, WorkerRecord]>,
+    );
 
     for (const nodeId of orderedNodeIds) {
       const node = nodesById.get(nodeId);
@@ -172,8 +190,21 @@ export const useStore = create<StoreState>((set) => ({
 
       useStore.getState().updateNodeStatus(nodeId, "queued");
 
+      const assignedWorker = normalizeNullableString(node.assignedWorker);
+      const targetWorker = assignedWorker ? workersById.get(assignedWorker) ?? null : pickPrimaryWorker(state.workers);
+      if (!targetWorker) {
+        const error = assignedWorker
+          ? new Error(`Assigned worker ${assignedWorker} is not connected.`)
+          : new Error("No connected worker is available for pipeline execution.");
+        useStore.getState().updateNode(nodeId, {
+          status: "error",
+          lastError: error.message,
+        });
+        throw error;
+      }
+
       try {
-        manager.exec(nodeId, node.code);
+        manager.exec(nodeId, node.code, targetWorker.id);
       } catch (error) {
         useStore.getState().updateNodeStatus(nodeId, "error");
         throw error;
@@ -193,6 +224,7 @@ export const useStore = create<StoreState>((set) => ({
         ...existing,
         ...worker,
         id: worker.id,
+        url: normalizeNullableString(worker.url) ?? existing?.url ?? worker.id,
         hostname: normalizeNullableString(worker.hostname) ?? existing?.hostname ?? worker.id,
         os: normalizeNullableString(worker.os) ?? existing?.os ?? "Unknown OS",
         workerId: normalizeNullableString(worker.workerId) ?? existing?.workerId ?? worker.id,
@@ -218,7 +250,7 @@ export const useStore = create<StoreState>((set) => ({
     set((state) => ({
       workers: sortWorkers(
         state.workers.map((worker) =>
-          worker.id === workerId || worker.workerId === workerId
+          worker.id === workerId || worker.workerId === workerId || worker.url === workerId
             ? {
                 ...worker,
                 status: "offline",

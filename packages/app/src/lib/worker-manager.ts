@@ -20,6 +20,7 @@ type ActiveExecution = {
   nodeId: string;
   commandId: string;
   scriptId: string | null;
+  workerId: string;
 };
 
 type PendingCommand = {
@@ -36,8 +37,44 @@ type TelemetryLike = WorkerTelemetryEvent & {
   gpu_pct?: number | null;
 };
 
+type ConnectionListeners = {
+  open: EventListener;
+  message: EventListener;
+  close: EventListener;
+  error: EventListener;
+};
+
+type ManagedConnection = {
+  id: string;
+  url: string;
+  socket: WorkerSocketLike | null;
+  listeners: ConnectionListeners | null;
+  reconnectTimer: ReturnType<typeof globalThis.setTimeout> | null;
+  heartbeatTimer: ReturnType<typeof globalThis.setInterval> | null;
+  reconnectAttempts: number;
+  disposed: boolean;
+  status: WorkerRecord["status"];
+  workerId: string | null;
+  workerHostname: string | null;
+  workerOs: string | null;
+  workerPid: number | null;
+  workerVersion: string | null;
+  latestStats: {
+    ts: number;
+    cpuPct: number;
+    memPct: number;
+    gpuPct: number | null;
+  } | null;
+  commandSequence: number;
+  outboundQueue: WorkerOutboundMessage[];
+  pendingCommands: Map<string, PendingCommand>;
+  activeExecutions: Map<string, ActiveExecution>;
+  streamRemainders: Map<string, { stdout: string; stderr: string }>;
+};
+
 export interface WorkerManagerOptions {
   url?: string;
+  workerUrls?: string[];
   autoConnect?: boolean;
   heartbeatIntervalMs?: number;
   reconnectBaseDelayMs?: number;
@@ -60,31 +97,20 @@ const pickNodeId = (payload: Record<string, unknown>, fallback: string | undefin
 
 const pickNumber = (value: unknown): number | undefined => (typeof value === "number" && Number.isFinite(value) ? value : undefined);
 
+const normalizeUrl = (url: string): string => url.trim();
+
 export class WorkerManager {
-  private readonly url: string;
   private readonly heartbeatIntervalMs: number;
   private readonly reconnectBaseDelayMs: number;
   private readonly reconnectMaxDelayMs: number;
   private readonly socketFactory: SocketFactory;
   private readonly canAttemptReconnect: boolean;
-  private socket: WorkerSocketLike | null = null;
-  private reconnectTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
-  private heartbeatTimer: ReturnType<typeof globalThis.setInterval> | null = null;
-  private reconnectAttempts = 0;
+  private readonly connections = new Map<string, ManagedConnection>();
+  private readonly executionsByNodeId = new Map<string, { connectionId: string; commandId: string; scriptId: string | null }>();
   private disposed = false;
-  private workerId: string | null = null;
-  private workerHostname: string | null = null;
-  private workerOs: string | null = null;
-  private workerPid: number | null = null;
-  private workerVersion: string | null = null;
-  private commandSequence = 0;
-  private readonly outboundQueue: WorkerOutboundMessage[] = [];
-  private readonly pendingCommands = new Map<string, PendingCommand>();
-  private readonly executionsByNodeId = new Map<string, ActiveExecution>();
-  private readonly streamRemainders = new Map<string, { stdout: string; stderr: string }>();
+  private primaryConnectionId: string | null = null;
 
   constructor(options: WorkerManagerOptions = {}) {
-    this.url = options.url ?? DEFAULT_URL;
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_MS;
     this.reconnectBaseDelayMs = options.reconnectBaseDelayMs ?? DEFAULT_RECONNECT_BASE_MS;
     this.reconnectMaxDelayMs = options.reconnectMaxDelayMs ?? DEFAULT_RECONNECT_MAX_MS;
@@ -97,41 +123,89 @@ export class WorkerManager {
       return new globalThis.WebSocket(url);
     });
 
+    const initialUrls = options.workerUrls?.length ? options.workerUrls : [options.url ?? DEFAULT_URL];
+    this.primaryConnectionId = normalizeUrl(initialUrls[0] ?? DEFAULT_URL);
+
     if (options.autoConnect !== false) {
-      void this.connect();
+      for (const url of initialUrls) {
+        this.connectWorker(url);
+      }
     }
   }
 
   public dispose(): void {
     this.disposed = true;
-    this.clearReconnectTimer();
-    this.stopHeartbeat();
-
-    if (this.socket) {
-      const socket = this.socket;
-      this.socket = null;
-      socket.close(1000, "disposed");
+    for (const connection of this.connections.values()) {
+      this.destroyConnection(connection, "disposed", true);
     }
+    this.connections.clear();
+    this.executionsByNodeId.clear();
   }
 
-  public exec(nodeId: string, code: string): string {
-    const commandId = this.nextCommandId();
-    this.pendingCommands.set(commandId, { kind: "exec", nodeId });
-    this.executionsByNodeId.set(nodeId, {
+  public connectWorker(url: string): string {
+    const connectionId = normalizeUrl(url);
+    let connection = this.connections.get(connectionId);
+    if (connection && !connection.disposed) {
+      void this.ensureConnected(connection);
+      return connection.id;
+    }
+
+    connection = this.createConnection(connectionId);
+    this.connections.set(connectionId, connection);
+    if (!this.primaryConnectionId) {
+      this.primaryConnectionId = connectionId;
+    }
+    this.syncWorkerRecord(connection, "connecting");
+    void this.ensureConnected(connection);
+    return connection.id;
+  }
+
+  public disconnectWorker(workerIdOrUrl: string): void {
+    const connection = this.findConnection(workerIdOrUrl);
+    if (!connection) {
+      return;
+    }
+
+    this.connections.delete(connection.id);
+    this.destroyConnection(connection, "disconnected by user", true);
+    if (this.primaryConnectionId === connection.id) {
+      this.primaryConnectionId = this.getFirstConnectionId();
+    }
+    this.refreshConnectionState();
+  }
+
+  public getPrimaryWorkerId(): string | null {
+    return this.getPrimaryConnection()?.id ?? null;
+  }
+
+  public exec(nodeId: string, code: string, workerId?: string | null): string {
+    const connection = this.resolveConnection(workerId);
+    if (!connection) {
+      throw new Error(workerId ? `Worker ${workerId} is not connected.` : "No connected worker is available.");
+    }
+
+    const commandId = this.nextCommandId(connection);
+    connection.pendingCommands.set(commandId, { kind: "exec", nodeId });
+    connection.activeExecutions.set(nodeId, {
       nodeId,
+      commandId,
+      scriptId: null,
+      workerId: connection.id,
+    });
+    this.executionsByNodeId.set(nodeId, {
+      connectionId: connection.id,
       commandId,
       scriptId: null,
     });
 
     useStore.getState().updateNode(nodeId, {
-      status: this.isSocketOpen() ? "running" : "queued",
+      status: this.isSocketOpen(connection) ? "running" : "queued",
       lastOutput: null,
       lastError: null,
-      assignedWorker: this.workerId,
       runDuration: null,
     });
 
-    this.send({
+    this.send(connection, {
       id: commandId,
       type: "command",
       command: "exec",
@@ -145,19 +219,23 @@ export class WorkerManager {
     return commandId;
   }
 
-  public kill(nodeId: string): string {
-    const commandId = this.nextCommandId();
-    this.pendingCommands.set(commandId, { kind: "kill", nodeId });
-
+  public kill(nodeId: string, workerId?: string | null): string {
     const execution = this.executionsByNodeId.get(nodeId);
-    const scriptId = execution?.scriptId ?? nodeId;
+    const connection = workerId ? this.resolveConnection(workerId) : execution ? this.connections.get(execution.connectionId) ?? null : this.getPrimaryConnection();
+    if (!connection) {
+      throw new Error(workerId ? `Worker ${workerId} is not connected.` : "No connected worker is available.");
+    }
+
+    const commandId = this.nextCommandId(connection);
+    connection.pendingCommands.set(commandId, { kind: "kill", nodeId });
+
+    const scriptId = connection.activeExecutions.get(nodeId)?.scriptId ?? execution?.scriptId ?? nodeId;
 
     useStore.getState().updateNode(nodeId, {
       status: "stopped",
-      assignedWorker: null,
     });
 
-    this.send({
+    this.send(connection, {
       id: commandId,
       type: "command",
       command: "stop_script",
@@ -172,52 +250,100 @@ export class WorkerManager {
     return commandId;
   }
 
-  public requestStatus(): string {
-    const commandId = this.nextCommandId();
-    this.pendingCommands.set(commandId, { kind: "status" });
+  public requestStatus(workerId?: string | null): string {
+    const connection = workerId ? this.resolveConnection(workerId) : this.getPrimaryConnection();
+    if (workerId && !connection) {
+      throw new Error(`Worker ${workerId} is not connected.`);
+    }
 
-    this.send({
+    if (!workerId) {
+      for (const nextConnection of this.connections.values()) {
+        const commandId = this.nextCommandId(nextConnection);
+        nextConnection.pendingCommands.set(commandId, { kind: "status" });
+        this.send(nextConnection, {
+          id: commandId,
+          type: "request",
+          command: "get_status",
+          data: {},
+        });
+      }
+      return "broadcast";
+    }
+
+    const commandId = this.nextCommandId(connection);
+    connection.pendingCommands.set(commandId, { kind: "status" });
+    this.send(connection, {
       id: commandId,
       type: "request",
       command: "get_status",
       data: {},
     });
-
     return commandId;
   }
 
-  private async connect(): Promise<void> {
-    if (this.disposed || this.socket || this.reconnectTimer !== null) {
+  private createConnection(url: string): ManagedConnection {
+    return {
+      id: url,
+      url,
+      socket: null,
+      listeners: null,
+      reconnectTimer: null,
+      heartbeatTimer: null,
+      reconnectAttempts: 0,
+      disposed: false,
+      status: "connecting",
+      workerId: null,
+      workerHostname: null,
+      workerOs: null,
+      workerPid: null,
+      workerVersion: null,
+      latestStats: null,
+      commandSequence: 0,
+      outboundQueue: [],
+      pendingCommands: new Map(),
+      activeExecutions: new Map(),
+      streamRemainders: new Map(),
+    };
+  }
+
+  private async ensureConnected(connection: ManagedConnection): Promise<void> {
+    if (this.disposed || connection.disposed || connection.socket || connection.reconnectTimer !== null) {
       return;
     }
 
-    const socket = this.socketFactory(this.url);
+    const socket = this.socketFactory(connection.url);
     if (!socket) {
       if (this.canAttemptReconnect) {
-        this.scheduleReconnect();
+        this.scheduleReconnect(connection);
       } else {
-        useStore.getState().setConnectionState("disconnected");
+        connection.status = "offline";
+        this.syncWorkerRecord(connection, "offline");
+        this.refreshConnectionState();
       }
       return;
     }
 
-    this.socket = socket;
-    useStore.getState().setConnectionState("connecting");
+    connection.socket = socket;
+    connection.status = "connecting";
+    this.syncWorkerRecord(connection, "connecting");
+    this.refreshConnectionState();
 
     const handleOpen = () => {
-      if (this.socket !== socket || this.disposed) {
+      if (connection.socket !== socket || connection.disposed || this.disposed) {
         return;
       }
 
-      this.clearReconnectTimer();
-      this.reconnectAttempts = 0;
-      useStore.getState().setConnectionState("connected");
-      this.flushQueue();
-      this.startHeartbeat();
+      this.clearReconnectTimer(connection);
+      connection.reconnectAttempts = 0;
+      connection.status = "connecting";
+      this.syncWorkerRecord(connection, "connecting");
+      this.flushQueue(connection);
+      this.startHeartbeat(connection);
+      this.refreshConnectionState();
     };
 
     const handleMessage = (event: MessageEvent) => {
-      if (this.socket !== socket || this.disposed) {
+      if (connection.socket !== socket || connection.disposed || this.disposed) {
         return;
       }
 
@@ -225,25 +351,32 @@ export class WorkerManager {
         return;
       }
 
-      this.handleMessage(event.data);
+      this.handleMessage(connection, event.data);
     };
 
     const handleClose = (event: CloseEvent) => {
-      if (this.socket !== socket) {
+      if (connection.socket !== socket) {
         return;
       }
 
-      this.socket = null;
-      this.stopHeartbeat();
-      this.handleDisconnect(event.reason || "socket closed");
+      connection.socket = null;
+      this.stopHeartbeat(connection);
+      this.handleConnectionDrop(connection, event.reason || "socket closed");
     };
 
     const handleError = () => {
-      if (this.socket !== socket || this.disposed) {
+      if (connection.socket !== socket || connection.disposed || this.disposed) {
         return;
       }
 
-      this.scheduleReconnect();
+      this.scheduleReconnect(connection);
+    };
+
+    connection.listeners = {
+      open: handleOpen,
+      message: handleMessage as EventListener,
+      close: handleClose as EventListener,
+      error: handleError as EventListener,
     };
 
     socket.addEventListener("open", handleOpen);
@@ -252,30 +385,30 @@ export class WorkerManager {
     socket.addEventListener("error", handleError as EventListener);
   }
 
-  private handleDisconnect(reason: string): void {
-    const activeNodeIds = [...this.executionsByNodeId.keys()];
+  private handleConnectionDrop(connection: ManagedConnection, reason: string): void {
+    const activeNodeIds = [...connection.activeExecutions.keys()];
     for (const nodeId of activeNodeIds) {
-      this.flushStreamRemainders(nodeId);
+      this.flushStreamRemainders(connection, nodeId);
       useStore.getState().updateNode(nodeId, {
         status: "stopped",
         lastError: `Worker disconnected: ${reason}`,
-        assignedWorker: null,
+        runDuration: null,
       });
+      this.executionsByNodeId.delete(nodeId);
     }
 
-    this.executionsByNodeId.clear();
-    const workerKey = this.workerIdentityKey();
-    if (workerKey) {
-      useStore.getState().markWorkerOffline(workerKey);
-    }
-    useStore.getState().setConnectionState("disconnected");
+    connection.activeExecutions.clear();
+    connection.pendingCommands.clear();
+    connection.status = "offline";
+    this.syncWorkerRecord(connection, "offline");
+    this.refreshConnectionState();
 
     if (!this.disposed) {
-      this.scheduleReconnect();
+      this.scheduleReconnect(connection);
     }
   }
 
-  private handleMessage(rawMessage: string): void {
+  private handleMessage(connection: ManagedConnection, rawMessage: string): void {
     let parsed: unknown;
     try {
       parsed = JSON.parse(rawMessage) as unknown;
@@ -292,148 +425,99 @@ export class WorkerManager {
     const message = parsed as WorkerIncomingMessage & Record<string, unknown>;
     switch (message.type) {
       case "identity":
-        this.handleIdentity(message);
+        this.handleIdentity(connection, message);
         return;
       case "telemetry":
       case "heartbeat":
-        this.handleTelemetry(message);
+        this.handleTelemetry(connection, message);
         return;
       case "pong":
-        this.handlePong(message);
+        this.handlePong(connection, message);
         return;
       case "stdout":
       case "stderr":
       case "stream":
-        this.handleStream(message);
+        this.handleStream(connection, message);
         return;
       case "exit":
       case "result":
-        this.handleCompletion(message);
+        this.handleCompletion(connection, message);
         return;
       case "error":
-        this.handleWorkerError(message);
+        this.handleWorkerError(connection, message);
         return;
       default:
         console.warn("WorkerManager received unsupported message", message);
     }
   }
 
-  private handleIdentity(message: WorkerIdentityEvent): void {
-    const workerId = message.worker_id ?? message.workerId ?? null;
-    this.workerId = workerId;
-    this.workerHostname = message.hostname ?? this.workerHostname;
-    this.workerOs = message.os ?? this.workerOs;
-    this.workerPid = typeof message.pid === "number" ? message.pid : this.workerPid;
-    this.workerVersion = message.version ?? this.workerVersion;
+  private handleIdentity(connection: ManagedConnection, message: WorkerIdentityEvent): void {
+    connection.workerId = message.worker_id ?? message.workerId ?? null;
+    connection.workerHostname = message.hostname ?? connection.workerHostname;
+    connection.workerOs = message.os ?? connection.workerOs;
+    connection.workerPid = typeof message.pid === "number" ? message.pid : connection.workerPid;
+    connection.workerVersion = message.version ?? connection.workerVersion;
+    connection.status = "online";
 
-    const stats = useStore.getState().workerStats;
-    useStore.getState().setWorkerStats({
-      ts: stats?.ts ?? Date.now(),
-      cpuPct: stats?.cpuPct ?? 0,
-      memPct: stats?.memPct ?? 0,
-      gpuPct: stats?.gpuPct ?? null,
-      workerId,
-      hostname: this.workerHostname,
-      os: this.workerOs,
-      lastHeartbeatAt: stats?.lastHeartbeatAt ?? null,
-    });
-
-    this.upsertWorker({
-      id: this.workerIdentityKey(workerId, this.workerHostname),
-      ts: stats?.ts ?? Date.now(),
-      cpuPct: stats?.cpuPct ?? 0,
-      memPct: stats?.memPct ?? 0,
-      gpuPct: stats?.gpuPct ?? null,
-      workerId,
-      hostname: this.workerHostname,
-      os: this.workerOs,
-      lastHeartbeatAt: stats?.lastHeartbeatAt ?? null,
-      status: "online",
-      pid: this.workerPid,
-      version: this.workerVersion,
-    });
-
-    for (const nodeId of this.executionsByNodeId.keys()) {
-      useStore.getState().updateNode(nodeId, {
-        assignedWorker: workerId,
-      });
-    }
+    this.syncWorkerRecord(connection, "online");
+    this.refreshConnectionState();
   }
 
-  private handleTelemetry(message: TelemetryLike | { type: "heartbeat"; ts: number; cpu_pct: number; mem_pct: number; gpu_pct?: number | null }): void {
-    const workerId = message.worker_id ?? this.workerId;
-    const hostname = message.hostname ?? this.workerHostname;
-    const os = message.os ?? this.workerOs;
-    const pid = typeof message.pid === "number" ? message.pid : this.workerPid;
-    const version = message.version ?? this.workerVersion;
-    const stats = {
+  private handleTelemetry(connection: ManagedConnection, message: TelemetryLike | { type: "heartbeat"; ts: number; cpu_pct: number; mem_pct: number; gpu_pct?: number | null }): void {
+    connection.workerId = message.worker_id ?? connection.workerId;
+    connection.workerHostname = message.hostname ?? connection.workerHostname;
+    connection.workerOs = message.os ?? connection.workerOs;
+    connection.workerPid = typeof message.pid === "number" ? message.pid : connection.workerPid;
+    connection.workerVersion = message.version ?? connection.workerVersion;
+    connection.latestStats = {
       ts: message.ts,
       cpuPct: message.cpu_pct,
       memPct: message.mem_pct,
       gpuPct: message.gpu_pct ?? null,
-      workerId,
-      hostname,
-      os,
-      lastHeartbeatAt: Date.now(),
     };
-
-    useStore.getState().setWorkerStats(stats);
-    this.upsertWorker({
-      id: this.workerIdentityKey(workerId, hostname),
-      ...stats,
-      status: "online",
-      pid,
-      version,
-      workerId,
-    });
-  }
-
-  private handlePong(message: WorkerPongEvent): void {
-    const stats = useStore.getState().workerStats;
-    if (!stats) {
-      useStore.getState().setWorkerStats({
-        ts: message.ts ?? Date.now(),
-        cpuPct: 0,
-        memPct: 0,
-        gpuPct: null,
-        workerId: this.workerId,
-        hostname: this.workerHostname,
-        os: this.workerOs,
-        lastHeartbeatAt: Date.now(),
-      });
-      this.upsertWorker({
-        id: this.workerIdentityKey(),
-        ts: message.ts ?? Date.now(),
-        cpuPct: 0,
-        memPct: 0,
-        gpuPct: null,
-        workerId: this.workerId,
-        hostname: this.workerHostname,
-        os: this.workerOs,
-        lastHeartbeatAt: Date.now(),
-        status: "online",
-        pid: this.workerPid,
-        version: this.workerVersion,
-      });
-      return;
-    }
+    connection.status = "online";
 
     useStore.getState().setWorkerStats({
-      ...stats,
+      ts: message.ts,
+      cpuPct: message.cpu_pct,
+      memPct: message.mem_pct,
+      gpuPct: message.gpu_pct ?? null,
+      workerId: connection.workerId,
+      hostname: connection.workerHostname,
+      os: connection.workerOs,
       lastHeartbeatAt: Date.now(),
     });
-    this.upsertWorker({
-      id: this.workerIdentityKey(stats.workerId, stats.hostname),
-      ...stats,
-      status: "online",
-      lastHeartbeatAt: Date.now(),
-      pid: this.workerPid,
-      version: this.workerVersion,
-    });
+    this.syncWorkerRecord(connection, "online");
+    this.refreshConnectionState();
   }
 
-  private handleStream(message: WorkerRealtimeStreamEvent | Record<string, unknown>): void {
-    const pendingNodeId = typeof message.id === "string" ? this.pendingCommands.get(message.id)?.nodeId : undefined;
+  private handlePong(connection: ManagedConnection, message: WorkerPongEvent): void {
+    if (!connection.latestStats) {
+      connection.latestStats = {
+        ts: message.ts ?? Date.now(),
+        cpuPct: 0,
+        memPct: 0,
+        gpuPct: null,
+      };
+    }
+
+    connection.status = "online";
+    useStore.getState().setWorkerStats({
+      ts: message.ts ?? connection.latestStats.ts,
+      cpuPct: connection.latestStats.cpuPct,
+      memPct: connection.latestStats.memPct,
+      gpuPct: connection.latestStats.gpuPct,
+      workerId: connection.workerId,
+      hostname: connection.workerHostname,
+      os: connection.workerOs,
+      lastHeartbeatAt: Date.now(),
+    });
+    this.syncWorkerRecord(connection, "online");
+    this.refreshConnectionState();
+  }
+
+  private handleStream(connection: ManagedConnection, message: WorkerRealtimeStreamEvent | Record<string, unknown>): void {
+    const pendingNodeId = typeof message.id === "string" ? connection.pendingCommands.get(message.id)?.nodeId : undefined;
     const nodeId = pickNodeId(message, pendingNodeId);
     const data = typeof message.data === "string" ? message.data : "";
     const stream = message.type === "stderr" || message.stream === "stderr" ? "stderr" : "stdout";
@@ -448,16 +532,16 @@ export class WorkerManager {
       status: "running",
     });
     state.appendOutput(nodeId, stream, data);
-    this.appendTerminalStream(nodeId, stream, data);
+    this.appendTerminalStream(connection, nodeId, stream, data);
   }
 
-  private handleCompletion(message: WorkerExitEvent | Record<string, unknown>): void {
-    const pending = typeof message.id === "string" ? this.pendingCommands.get(message.id) : undefined;
+  private handleCompletion(connection: ManagedConnection, message: WorkerExitEvent | Record<string, unknown>): void {
+    const pending = typeof message.id === "string" ? connection.pendingCommands.get(message.id) : undefined;
     const payload = message && typeof message === "object" && message.data && typeof message.data === "object" ? (message.data as Record<string, unknown>) : message;
-    const hasTelemetryShape =
-      typeof payload.ts === "number" && typeof payload.cpu_pct === "number" && typeof payload.mem_pct === "number";
+    const hasTelemetryShape = typeof payload.ts === "number" && typeof payload.cpu_pct === "number" && typeof payload.mem_pct === "number";
+
     if (pending?.kind === "status" || hasTelemetryShape) {
-      this.handleTelemetry({
+      this.handleTelemetry(connection, {
         type: "heartbeat",
         ts: pickNumber(payload.ts) ?? Date.now(),
         cpu_pct: pickNumber(payload.cpu_pct) ?? 0,
@@ -465,7 +549,7 @@ export class WorkerManager {
         gpu_pct: typeof payload.gpu_pct === "number" ? payload.gpu_pct : null,
       });
       if (typeof message.id === "string") {
-        this.pendingCommands.delete(message.id);
+        connection.pendingCommands.delete(message.id);
       }
       return;
     }
@@ -476,141 +560,218 @@ export class WorkerManager {
       return;
     }
 
-    this.flushStreamRemainders(nodeId);
+    this.flushStreamRemainders(connection, nodeId);
 
     const exitCode = pickNumber(payload.exit_code ?? payload.exitCode ?? (message as Record<string, unknown>).exit_code ?? (message as Record<string, unknown>).exitCode);
-
     const stopped = Boolean(payload.stopped) || (message.type === "result" && typeof exitCode === "number" && exitCode !== 0 && typeof payload.signal === "undefined");
     const resolvedExitCode = exitCode ?? 0;
     const status = stopped ? "stopped" : resolvedExitCode === 0 ? "success" : "error";
 
     useStore.getState().updateNode(nodeId, {
       status,
-      assignedWorker: null,
       runDuration: null,
     });
 
-    const execution = this.executionsByNodeId.get(nodeId);
+    const execution = connection.activeExecutions.get(nodeId);
     const scriptId = typeof payload.script_id === "string" ? payload.script_id : typeof payload.scriptId === "string" ? payload.scriptId : undefined;
     if (execution && typeof message.id === "string" && execution.commandId === message.id && scriptId) {
       execution.scriptId = scriptId;
-      this.executionsByNodeId.set(nodeId, execution);
+      connection.activeExecutions.set(nodeId, execution);
+      const globalExecution = this.executionsByNodeId.get(nodeId);
+      if (globalExecution) {
+        globalExecution.scriptId = scriptId;
+        this.executionsByNodeId.set(nodeId, globalExecution);
+      }
     }
 
+    connection.activeExecutions.delete(nodeId);
     this.executionsByNodeId.delete(nodeId);
     if (typeof message.id === "string") {
-      this.pendingCommands.delete(message.id);
+      connection.pendingCommands.delete(message.id);
     }
   }
 
-  private handleWorkerError(message: Record<string, unknown>): void {
-    const nodeId = pickNodeId(message, typeof message.id === "string" ? this.pendingCommands.get(message.id)?.nodeId : undefined);
+  private handleWorkerError(connection: ManagedConnection, message: Record<string, unknown>): void {
+    const pending = typeof message.id === "string" ? connection.pendingCommands.get(message.id) : undefined;
+    const nodeId = pickNodeId(message, pending?.nodeId);
     const errorMessage = typeof message.message === "string" ? message.message : "Worker error";
 
     if (nodeId) {
+      this.flushStreamRemainders(connection, nodeId);
       useStore.getState().updateNode(nodeId, {
         status: "error",
         lastError: errorMessage,
       });
+      connection.activeExecutions.delete(nodeId);
+      this.executionsByNodeId.delete(nodeId);
+      if (typeof message.id === "string") {
+        connection.pendingCommands.delete(message.id);
+      }
     } else {
       console.error("WorkerManager received worker error", message);
     }
   }
 
-  private send(message: WorkerOutboundMessage): void {
-    const socket = this.socket;
+  private send(connection: ManagedConnection, message: WorkerOutboundMessage): void {
+    const socket = connection.socket;
     if (!socket || socket.readyState !== OPEN_STATE) {
-      this.outboundQueue.push(message);
-      this.connectQueue();
+      connection.outboundQueue.push(message);
+      void this.ensureConnected(connection);
       return;
     }
 
     socket.send(JSON.stringify(message));
   }
 
-  private connectQueue(): void {
-    if (!this.socket && !this.disposed) {
-      void this.connect();
-    }
-  }
-
-  private flushQueue(): void {
-    const socket = this.socket;
+  private flushQueue(connection: ManagedConnection): void {
+    const socket = connection.socket;
     if (!socket || socket.readyState !== OPEN_STATE) {
       return;
     }
 
-    while (this.outboundQueue.length > 0) {
-      const message = this.outboundQueue.shift();
+    while (connection.outboundQueue.length > 0) {
+      const message = connection.outboundQueue.shift();
       if (message) {
         socket.send(JSON.stringify(message));
       }
     }
   }
 
-  private startHeartbeat(): void {
-    this.stopHeartbeat();
+  private startHeartbeat(connection: ManagedConnection): void {
+    this.stopHeartbeat(connection);
 
-    this.heartbeatTimer = globalThis.setInterval(() => {
-      if (!this.isSocketOpen()) {
+    connection.heartbeatTimer = globalThis.setInterval(() => {
+      if (!this.isSocketOpen(connection)) {
         return;
       }
 
-      this.socket?.send(JSON.stringify({ type: "ping" }));
+      connection.socket?.send(JSON.stringify({ type: "ping" }));
     }, this.heartbeatIntervalMs);
   }
 
-  private stopHeartbeat(): void {
-    if (this.heartbeatTimer !== null) {
-      globalThis.clearInterval(this.heartbeatTimer);
-      this.heartbeatTimer = null;
+  private stopHeartbeat(connection: ManagedConnection): void {
+    if (connection.heartbeatTimer !== null) {
+      globalThis.clearInterval(connection.heartbeatTimer);
+      connection.heartbeatTimer = null;
     }
   }
 
-  private scheduleReconnect(): void {
-    if (this.disposed || this.reconnectTimer !== null) {
+  private scheduleReconnect(connection: ManagedConnection): void {
+    if (this.disposed || connection.disposed || connection.reconnectTimer !== null) {
       return;
     }
 
-    const delay = Math.min(this.reconnectBaseDelayMs * 2 ** this.reconnectAttempts, this.reconnectMaxDelayMs);
-    this.reconnectAttempts += 1;
-    useStore.getState().setConnectionState("reconnecting");
+    const delay = Math.min(this.reconnectBaseDelayMs * 2 ** connection.reconnectAttempts, this.reconnectMaxDelayMs);
+    connection.reconnectAttempts += 1;
+    connection.status = "reconnecting";
+    this.syncWorkerRecord(connection, "reconnecting");
+    this.refreshConnectionState();
 
-    this.reconnectTimer = globalThis.setTimeout(() => {
-      this.reconnectTimer = null;
-      void this.connect();
+    connection.reconnectTimer = globalThis.setTimeout(() => {
+      connection.reconnectTimer = null;
+      void this.ensureConnected(connection);
     }, delay);
   }
 
-  private clearReconnectTimer(): void {
-    if (this.reconnectTimer !== null) {
-      globalThis.clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
+  private clearReconnectTimer(connection: ManagedConnection): void {
+    if (connection.reconnectTimer !== null) {
+      globalThis.clearTimeout(connection.reconnectTimer);
+      connection.reconnectTimer = null;
     }
   }
 
-  private isSocketOpen(): boolean {
-    return this.socket?.readyState === OPEN_STATE;
+  private isSocketOpen(connection: ManagedConnection): boolean {
+    return connection.socket?.readyState === OPEN_STATE;
   }
 
-  private nextCommandId(): string {
-    this.commandSequence += 1;
-    return `worker-${Date.now()}-${this.commandSequence}`;
+  private nextCommandId(connection: ManagedConnection): string {
+    connection.commandSequence += 1;
+    return `worker-${Date.now()}-${connection.id}-${connection.commandSequence}`;
   }
 
-  private workerIdentityKey(workerId: string | null = this.workerId, hostname: string | null = this.workerHostname): string {
-    return workerId ?? hostname ?? "worker-local";
+  private getPrimaryConnection(): ManagedConnection | null {
+    if (this.primaryConnectionId) {
+      const primary = this.connections.get(this.primaryConnectionId);
+      if (primary) {
+        return primary;
+      }
+    }
+
+    return this.connections.values().next().value ?? null;
   }
 
-  private upsertWorker(worker: WorkerRecord): void {
-    useStore.getState().upsertWorker(worker);
+  private getFirstConnectionId(): string | null {
+    return this.connections.keys().next().value ?? null;
   }
 
-  private appendTerminalStream(nodeId: string, stream: "stdout" | "stderr", data: string): void {
-    const remainder = this.streamRemainders.get(nodeId) ?? { stdout: "", stderr: "" };
+  private resolveConnection(workerId?: string | null): ManagedConnection | null {
+    if (workerId) {
+      return this.findConnection(workerId);
+    }
+
+    return this.getPrimaryConnection();
+  }
+
+  private findConnection(workerIdOrUrl: string): ManagedConnection | null {
+    const normalized = normalizeUrl(workerIdOrUrl);
+    for (const connection of this.connections.values()) {
+      if (
+        connection.id === normalized ||
+        connection.url === normalized ||
+        connection.workerId === normalized ||
+        connection.workerHostname === normalized
+      ) {
+        return connection;
+      }
+    }
+
+    return null;
+  }
+
+  private syncWorkerRecord(connection: ManagedConnection, status: WorkerRecord["status"]): void {
+    const stats = connection.latestStats;
+    useStore.getState().upsertWorker({
+      id: connection.id,
+      url: connection.url,
+      ts: stats?.ts ?? Date.now(),
+      cpuPct: stats?.cpuPct ?? 0,
+      memPct: stats?.memPct ?? 0,
+      gpuPct: stats?.gpuPct ?? null,
+      workerId: connection.workerId,
+      hostname: connection.workerHostname ?? connection.id,
+      os: connection.workerOs,
+      lastHeartbeatAt: stats ? Date.now() : null,
+      status,
+      pid: connection.workerPid,
+      version: connection.workerVersion,
+    });
+  }
+
+  private refreshConnectionState(): void {
+    const workers = useStore.getState().workers;
+    if (workers.some((worker) => worker.status === "online")) {
+      useStore.getState().setConnectionState("connected");
+      return;
+    }
+
+    if (workers.some((worker) => worker.status === "connecting")) {
+      useStore.getState().setConnectionState("connecting");
+      return;
+    }
+
+    if (workers.some((worker) => worker.status === "reconnecting")) {
+      useStore.getState().setConnectionState("reconnecting");
+      return;
+    }
+
+    useStore.getState().setConnectionState("disconnected");
+  }
+
+  private appendTerminalStream(connection: ManagedConnection, nodeId: string, stream: "stdout" | "stderr", data: string): void {
+    const remainder = connection.streamRemainders.get(nodeId) ?? { stdout: "", stderr: "" };
     const split = splitTerminalChunk(data, remainder[stream]);
     remainder[stream] = split.remainder;
-    this.streamRemainders.set(nodeId, remainder);
+    connection.streamRemainders.set(nodeId, remainder);
 
     if (split.lines.length === 0) {
       return;
@@ -624,15 +785,15 @@ export class WorkerManager {
         text,
         nodeId,
         nodeName: node?.name,
-        workerId: this.workerId,
+        workerId: connection.workerId ?? connection.id,
       }),
     );
 
     useStore.getState().appendTerminalEntries(entries);
   }
 
-  private flushStreamRemainders(nodeId: string): void {
-    const remainder = this.streamRemainders.get(nodeId);
+  private flushStreamRemainders(connection: ManagedConnection, nodeId: string): void {
+    const remainder = connection.streamRemainders.get(nodeId);
     if (!remainder) {
       return;
     }
@@ -648,7 +809,7 @@ export class WorkerManager {
           text: remainder.stdout,
           nodeId,
           nodeName: node?.name,
-          workerId: this.workerId,
+          workerId: connection.workerId ?? connection.id,
         }),
       );
     }
@@ -661,12 +822,39 @@ export class WorkerManager {
           text: remainder.stderr,
           nodeId,
           nodeName: node?.name,
-          workerId: this.workerId,
+          workerId: connection.workerId ?? connection.id,
         }),
       );
     }
 
     useStore.getState().appendTerminalEntries(entries);
-    this.streamRemainders.delete(nodeId);
+    connection.streamRemainders.delete(nodeId);
+  }
+
+  private detachListeners(connection: ManagedConnection): void {
+    if (!connection.socket || !connection.listeners) {
+      return;
+    }
+
+    connection.socket.removeEventListener("open", connection.listeners.open);
+    connection.socket.removeEventListener("message", connection.listeners.message);
+    connection.socket.removeEventListener("close", connection.listeners.close);
+    connection.socket.removeEventListener("error", connection.listeners.error);
+    connection.listeners = null;
+  }
+
+  private destroyConnection(connection: ManagedConnection, reason: string, removeSocket: boolean): void {
+    connection.disposed = true;
+    this.clearReconnectTimer(connection);
+    this.stopHeartbeat(connection);
+    this.detachListeners(connection);
+
+    if (removeSocket && connection.socket) {
+      const socket = connection.socket;
+      connection.socket = null;
+      socket.close(1000, reason);
+    }
+
+    this.handleConnectionDrop(connection, reason);
   }
 }
