@@ -1,4 +1,1 @@
-{
-  "title": "Build the Notebook View for Strawberry Studios",
-  "status": "completed"
-}
+{"task_id":"notebook-view","status":"done","files_created":["packages/app/src/components/NotebookCell.tsx","packages/app/src/components/NotebookView.tsx"],"summary":"Added a notebook-style cell list with CodeMirror editing, worker execution, output consoles, status badges, and canvas/notebook switching."}
