@@ -52,10 +52,25 @@ export default function StrawberryNode({ data }: NodeProps<StrawberryNodeData>) 
           animate={
             isExiting
               ? { opacity: 0.35, y: -6, scale: 0.96 }
-              : { opacity: 1, y: 0, scale: 1 }
+              : status === "running"
+                ? {
+                    opacity: 1,
+                    y: 0,
+                    scale: 1,
+                    boxShadow: [
+                      "0 24px 80px rgba(0, 0, 0, 0.45)",
+                      "0 24px 96px rgba(96, 165, 250, 0.12)",
+                      "0 24px 80px rgba(0, 0, 0, 0.45)",
+                    ],
+                  }
+                : { opacity: 1, y: 0, scale: 1 }
           }
           exit={{ opacity: 0, y: -10, scale: 0.94 }}
-          transition={{ duration: 0.18, ease: "easeInOut" }}
+          transition={
+            status === "running"
+              ? { duration: 1.6, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }
+              : { duration: 0.18, ease: "easeInOut" }
+          }
         >
           <Handle type="target" position={Position.Left} className="strawberry-node__handle" />
 
@@ -65,24 +80,29 @@ export default function StrawberryNode({ data }: NodeProps<StrawberryNodeData>) 
               <h3 className="strawberry-node__title">{data.name}</h3>
             </div>
 
-            <motion.span
-              className={`strawberry-node__status strawberry-node__status--${status}`}
-              animate={
-                status === "running"
-                  ? {
-                      scale: [1, 1.04, 1],
-                      opacity: [0.92, 1, 0.92],
-                    }
-                  : { scale: 1, opacity: 1 }
-              }
-              transition={
-                status === "running"
-                  ? { duration: 1.8, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }
-                  : { duration: 0.15 }
-              }
-            >
-              {statusLabels[status]}
-            </motion.span>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={status}
+                className={`strawberry-node__status strawberry-node__status--${status}`}
+                initial={{ opacity: 0, y: 4, scale: 0.96 }}
+                animate={
+                  status === "running"
+                    ? {
+                        opacity: [0.92, 1, 0.92],
+                        scale: [1, 1.03, 1],
+                      }
+                    : { opacity: 1, y: 0, scale: 1 }
+                }
+                exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                transition={
+                  status === "running"
+                    ? { duration: 1.6, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }
+                    : { duration: 0.16, ease: "easeInOut" }
+                }
+              >
+                {statusLabels[status]}
+              </motion.span>
+            </AnimatePresence>
           </header>
 
           <footer className="strawberry-node__footer">

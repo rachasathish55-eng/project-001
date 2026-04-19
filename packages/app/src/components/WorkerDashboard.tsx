@@ -54,9 +54,10 @@ function ResourceGauge({
       <div className="worker-dashboard__track" aria-hidden="true">
         <motion.div
           className={`worker-dashboard__fill worker-dashboard__fill--${tone}`}
-          initial={{ width: 0 }}
-          animate={{ width: `${normalizedValue}%` }}
-          transition={{ duration: 0.3, ease: "easeOut" }}
+          initial={{ scaleX: 0 }}
+          animate={{ scaleX: normalizedValue / 100 }}
+          style={{ transformOrigin: "0% 50%" }}
+          transition={{ type: "spring", stiffness: 140, damping: 26, mass: 0.8 }}
         />
       </div>
     </div>
@@ -139,8 +140,8 @@ export default function WorkerDashboard({
       className={`worker-dashboard${isOpen ? "" : " worker-dashboard--collapsed"}`}
       layout
       initial={false}
-      animate={{ opacity: 1, x: isOpen ? 0 : -4 }}
-      transition={{ duration: 0.22, ease: "easeInOut" }}
+      animate={{ opacity: 1, x: isOpen ? 0 : -10, scale: isOpen ? 1 : 0.985 }}
+      transition={{ type: "spring", stiffness: 260, damping: 28, mass: 0.9 }}
     >
       <header className="worker-dashboard__header">
         <div>

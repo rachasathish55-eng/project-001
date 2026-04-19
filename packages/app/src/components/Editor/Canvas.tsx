@@ -121,7 +121,7 @@ export default function Canvas() {
           const timer = window.setTimeout(() => {
             removalTimers.current.delete(change.id);
             deleteNode(change.id);
-          }, 180);
+          }, 220);
 
           removalTimers.current.set(change.id, timer);
           continue;

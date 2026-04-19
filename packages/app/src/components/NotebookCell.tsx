@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef } from "react";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -153,24 +153,29 @@ export default function NotebookCell({ nodeId }: { nodeId: string }) {
 
         <div className="code-cell__controls">
           <WorkerAssignmentSelect nodeId={nodeId} value={node.assignedWorker} className="worker-select--compact" />
-          <motion.span
-            className={`code-cell__status code-cell__status--${node.status}`}
-            animate={
-              node.status === "running"
-                ? {
-                    scale: [1, 1.035, 1],
-                    opacity: [0.94, 1, 0.94],
-                  }
-                : { scale: 1, opacity: 1 }
-            }
-            transition={
-              node.status === "running"
-                ? { duration: 1.8, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }
-                : { duration: 0.15 }
-            }
-          >
-            {node.status}
-          </motion.span>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span
+              key={node.status}
+              className={`code-cell__status code-cell__status--${node.status}`}
+              initial={{ opacity: 0, y: 4, scale: 0.96 }}
+              animate={
+                node.status === "running"
+                  ? {
+                      opacity: [0.94, 1, 0.94],
+                      scale: [1, 1.03, 1],
+                    }
+                  : { opacity: 1, y: 0, scale: 1 }
+              }
+              exit={{ opacity: 0, y: -4, scale: 0.96 }}
+              transition={
+                node.status === "running"
+                  ? { duration: 1.6, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }
+                  : { duration: 0.16, ease: "easeInOut" }
+              }
+            >
+              {node.status}
+            </motion.span>
+          </AnimatePresence>
           <button type="button" className="code-cell__run" onClick={handleRun} disabled={!manager}>
             Run
           </button>
