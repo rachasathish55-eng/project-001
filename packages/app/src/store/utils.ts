@@ -7,15 +7,12 @@ export interface GraphEdgeLike {
   to?: string;
 }
 
-export function topologicalSort(nodes: StrawberryNode[], edges: GraphEdgeLike[]): StrawberryNode[] {
+export function topologicalSort(nodes: StrawberryNode[], edges: GraphEdgeLike[]): string[] {
+  const nodeIds = nodes.map((node) => node.id);
   const nodeById = new Map(nodes.map((node) => [node.id, node] as const));
-  const inDegree = new Map<string, number>();
-  const adjacency = new Map<string, string[]>();
-
-  for (const node of nodes) {
-    inDegree.set(node.id, 0);
-    adjacency.set(node.id, []);
-  }
+  const inDegree = new Map<string, number>(nodeIds.map((id) => [id, 0] as const));
+  const adjacency = new Map<string, string[]>(nodeIds.map((id) => [id, []] as const));
+  const seenEdges = new Set<string>();
 
   for (const edge of edges) {
     const source = edge.source ?? edge.from;
@@ -25,39 +22,43 @@ export function topologicalSort(nodes: StrawberryNode[], edges: GraphEdgeLike[])
       continue;
     }
 
+    const edgeKey = `${source}->${target}`;
+    if (seenEdges.has(edgeKey)) {
+      continue;
+    }
+
+    seenEdges.add(edgeKey);
     adjacency.get(source)?.push(target);
     inDegree.set(target, (inDegree.get(target) ?? 0) + 1);
   }
 
-  const queue = nodes.filter((node) => (inDegree.get(node.id) ?? 0) === 0);
-  const ordered: StrawberryNode[] = [];
+  const queue = nodeIds.filter((id) => (inDegree.get(id) ?? 0) === 0);
+  const ordered: string[] = [];
+  const visited = new Set<string>();
 
   while (queue.length > 0) {
     const current = queue.shift();
 
-    if (!current) {
+    if (!current || visited.has(current)) {
       continue;
     }
 
+    visited.add(current);
     ordered.push(current);
 
-    for (const neighbor of adjacency.get(current.id) ?? []) {
+    for (const neighbor of adjacency.get(current) ?? []) {
       const nextDegree = (inDegree.get(neighbor) ?? 0) - 1;
       inDegree.set(neighbor, nextDegree);
 
       if (nextDegree === 0) {
-        const nextNode = nodeById.get(neighbor);
-        if (nextNode) {
-          queue.push(nextNode);
-        }
+        queue.push(neighbor);
       }
     }
   }
 
-  if (ordered.length === nodes.length) {
+  if (ordered.length === nodeIds.length) {
     return ordered;
   }
 
-  const remaining = nodes.filter((node) => !ordered.some((orderedNode) => orderedNode.id === node.id));
-  return [...ordered, ...remaining];
+  return [...ordered, ...nodeIds.filter((id) => !visited.has(id))];
 }

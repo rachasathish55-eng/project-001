@@ -72,6 +72,7 @@ describe("WorkerManager", () => {
       edges: [],
       workers: [],
       workerStats: null,
+      workerManager: null,
       connectionState: "disconnected",
       terminalEntries: [],
     });

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Canvas from "./components/Editor/Canvas";
+import Header from "./components/Header";
 import NotebookView from "./components/NotebookView";
 import TerminalPanel from "./components/TerminalPanel";
 import WorkerDashboard from "./components/WorkerDashboard";
@@ -10,17 +11,14 @@ import { useStore } from "./store/useStore";
 export default function App() {
   const [viewMode, setViewMode] = useState<"canvas" | "notebook">("canvas");
   const [manager, setManager] = useState<WorkerManager | null>(null);
-  const nodes = useStore((state) => state.nodes);
-  const edges = useStore((state) => state.edges);
-  const workers = useStore((state) => state.workers);
-  const workerStats = useStore((state) => state.workerStats);
-  const connectionState = useStore((state) => state.connectionState);
 
   useEffect(() => {
     const nextManager = new WorkerManager();
     setManager(nextManager);
+    useStore.getState().setWorkerManager(nextManager);
 
     return () => {
+      useStore.getState().setWorkerManager(null);
       nextManager.dispose();
     };
   }, []);
@@ -28,63 +26,7 @@ export default function App() {
   return (
     <WorkerManagerProvider manager={manager}>
       <main className="app-shell">
-        <header className="app-header">
-          <div className="app-header__copy">
-            <p className="app-eyebrow">Strawberry Studios</p>
-            <h1 className="app-title">Notebook and canvas editor</h1>
-            <p className="app-description">
-              Switch between the flow canvas and a vertical notebook while staying synced to the worker daemon.
-            </p>
-          </div>
-
-          <div className="app-statusbar">
-            <div className={`app-pill app-pill--${connectionState}`}>
-              <span>Connection</span>
-              <strong>{connectionState}</strong>
-            </div>
-            <div className="app-pill">
-              <span>Nodes</span>
-              <strong>{nodes.length}</strong>
-            </div>
-            <div className="app-pill">
-              <span>Edges</span>
-              <strong>{edges.length}</strong>
-            </div>
-            <div className="app-pill">
-              <span>Workers</span>
-              <strong>{workers.length}</strong>
-            </div>
-            <div className="app-pill">
-              <span>Telemetry</span>
-              <strong>
-                {workerStats
-                  ? `${workerStats.cpuPct.toFixed(1)}% CPU / ${workerStats.memPct.toFixed(1)}% MEM`
-                  : "waiting"}
-              </strong>
-            </div>
-          </div>
-
-          <div className="app-switcher" role="tablist" aria-label="Workspace view">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={viewMode === "canvas"}
-              className={`app-switcher__tab${viewMode === "canvas" ? " app-switcher__tab--active" : ""}`}
-              onClick={() => setViewMode("canvas")}
-            >
-              Canvas
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={viewMode === "notebook"}
-              className={`app-switcher__tab${viewMode === "notebook" ? " app-switcher__tab--active" : ""}`}
-              onClick={() => setViewMode("notebook")}
-            >
-              Notebook
-            </button>
-          </div>
-        </header>
+        <Header viewMode={viewMode} onViewModeChange={setViewMode} />
 
         <section className="workspace-shell">
           <WorkerDashboard />

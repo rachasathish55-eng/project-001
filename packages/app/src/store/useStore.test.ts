@@ -29,6 +29,7 @@ describe("useStore", () => {
       edges: [],
       workers: [],
       workerStats: null,
+      workerManager: null,
       connectionState: "disconnected",
       terminalEntries: [],
     });
@@ -155,6 +156,62 @@ describe("useStore", () => {
     ]);
   });
 
+  it("runs the pipeline in topological order and stops on failure", async () => {
+    const calls: string[] = [];
+    const manager = {
+      exec(nodeId: string, code: string) {
+        calls.push(nodeId);
+        useStore.getState().updateNodeStatus(nodeId, "running");
+        queueMicrotask(() => {
+          useStore.getState().updateNodeStatus(nodeId, nodeId === "node-a" ? "success" : "success");
+        });
+        return `${nodeId}-${code.length}`;
+      },
+    };
+
+    useStore.setState({
+      nodes: [
+        createNode("node-a", { type: "script", code: "print('Hello')" }),
+        createNode("node-b", { type: "script", code: "print('World')" }),
+      ],
+      edges: [{ source: "node-a", target: "node-b" }],
+      workerManager: manager,
+    });
+
+    await useStore.getState().runPipeline();
+
+    expect(calls).toEqual(["node-a", "node-b"]);
+    expect(useStore.getState().nodes.map((node) => node.status)).toEqual(["success", "success"]);
+  });
+
+  it("aborts the pipeline when a node fails", async () => {
+    const calls: string[] = [];
+    const manager = {
+      exec(nodeId: string) {
+        calls.push(nodeId);
+        useStore.getState().updateNodeStatus(nodeId, "running");
+        queueMicrotask(() => {
+          useStore.getState().updateNodeStatus(nodeId, nodeId === "node-a" ? "error" : "success");
+        });
+        return `${nodeId}-command`;
+      },
+    };
+
+    useStore.setState({
+      nodes: [
+        createNode("node-a", { type: "script", code: "print('Hello')" }),
+        createNode("node-b", { type: "script", code: "print('World')" }),
+      ],
+      edges: [{ source: "node-a", target: "node-b" }],
+      workerManager: manager,
+    });
+
+    await expect(useStore.getState().runPipeline()).rejects.toThrow("Pipeline aborted at node node-a: error");
+
+    expect(calls).toEqual(["node-a"]);
+    expect(useStore.getState().nodes.map((node) => node.status)).toEqual(["error", "idle"]);
+  });
+
   it("drops the oldest terminal entries past the buffer limit", () => {
     useStore.getState().appendTerminalEntries(
       Array.from({ length: 1001 }, (_, index) => ({
@@ -176,7 +233,7 @@ describe("topologicalSort", () => {
     const nodes = [createNode("a"), createNode("b"), createNode("c")];
     const edges = [{ source: "a", target: "b" }, { source: "b", target: "c" }];
 
-    expect(topologicalSort(nodes, edges).map((node) => node.id)).toEqual(["a", "b", "c"]);
+    expect(topologicalSort(nodes, edges)).toEqual(["a", "b", "c"]);
   });
 
   it("sorts a branching DAG", () => {
@@ -187,6 +244,6 @@ describe("topologicalSort", () => {
       { source: "c", target: "d" },
     ];
 
-    expect(topologicalSort(nodes, edges).map((node) => node.id)).toEqual(["a", "b", "c", "d"]);
+    expect(topologicalSort(nodes, edges)).toEqual(["a", "b", "c", "d"]);
   });
 });

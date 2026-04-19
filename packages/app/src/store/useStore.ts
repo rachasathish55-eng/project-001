@@ -1,6 +1,11 @@
 import { create } from "zustand";
 import type { StrawberryNode, StrawberryNodeStatus } from "@strawberry/shared";
 import { appendTerminalLogEntries, type TerminalLogEntry } from "../lib/terminal-logs";
+import { topologicalSort } from "./utils";
+
+export interface PipelineWorkerManager {
+  exec: (nodeId: string, code: string) => string;
+}
 
 export interface WorkerStats {
   ts: number;
@@ -27,6 +32,7 @@ export interface StoreState {
   edges: any[];
   workers: WorkerRecord[];
   workerStats: WorkerStats | null;
+  workerManager: PipelineWorkerManager | null;
   connectionState: "disconnected" | "connecting" | "connected" | "reconnecting";
   terminalEntries: TerminalLogEntry[];
   addNode: (node: StrawberryNode) => void;
@@ -38,6 +44,8 @@ export interface StoreState {
   appendOutput: (id: string, stream: "stdout" | "stderr", chunk: string) => void;
   appendTerminalEntries: (entries: TerminalLogEntry[]) => void;
   clearTerminalEntries: () => void;
+  setWorkerManager: (manager: PipelineWorkerManager | null) => void;
+  runPipeline: () => Promise<void>;
   upsertWorker: (worker: WorkerRecord) => void;
   markWorkerOffline: (workerId: string) => void;
   setWorkerStats: (stats: WorkerStats) => void;
@@ -48,6 +56,29 @@ const touchesNode = (edge: EdgeLike, nodeId: string) => edge.source === nodeId |
 const appendChunk = (existing: string | null | undefined, chunk: string) => (existing && existing.length > 0 ? `${existing}${chunk}` : chunk);
 const clampPercent = (value: number | null | undefined) => (typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0);
 const normalizeNullableString = (value: string | null | undefined) => (typeof value === "string" && value.trim().length > 0 ? value : null);
+const finalPipelineStatuses = new Set<StrawberryNodeStatus>(["success", "error", "stopped"]);
+
+function waitForNodeStatus(nodeId: string): Promise<StrawberryNodeStatus> {
+  const currentStatus = useStore.getState().nodes.find((node) => node.id === nodeId)?.status;
+  if (currentStatus && finalPipelineStatuses.has(currentStatus)) {
+    return Promise.resolve(currentStatus);
+  }
+
+  return new Promise<StrawberryNodeStatus>((resolve) => {
+    const unsubscribe = useStore.subscribe((state) => {
+      const nextStatus = state.nodes.find((node) => node.id === nodeId)?.status;
+      if (nextStatus && finalPipelineStatuses.has(nextStatus)) {
+        unsubscribe();
+        resolve(nextStatus);
+      }
+    });
+  });
+}
+
+function createPipelineError(nodeId: string, status: StrawberryNodeStatus): Error {
+  return new Error(`Pipeline aborted at node ${nodeId}: ${status}`);
+}
+
 const sortWorkers = (workers: WorkerRecord[]) =>
   [...workers].sort((left, right) => {
     if (left.status !== right.status) {
@@ -62,6 +93,7 @@ export const useStore = create<StoreState>((set) => ({
   edges: [],
   workers: [],
   workerStats: null,
+  workerManager: null,
   connectionState: "disconnected",
   terminalEntries: [],
   addNode: (node) =>
@@ -117,6 +149,42 @@ export const useStore = create<StoreState>((set) => ({
     set(() => ({
       terminalEntries: [],
     })),
+  setWorkerManager: (manager) =>
+    set(() => ({
+      workerManager: manager,
+    })),
+  runPipeline: async () => {
+    const state = useStore.getState();
+    const manager = state.workerManager;
+
+    if (!manager) {
+      throw new Error("Pipeline execution requires an active WorkerManager.");
+    }
+
+    const orderedNodeIds = topologicalSort(state.nodes, state.edges as EdgeLike[]);
+    const nodesById = new Map(state.nodes.map((node) => [node.id, node] as const));
+
+    for (const nodeId of orderedNodeIds) {
+      const node = nodesById.get(nodeId);
+      if (!node || (node.type !== "script" && node.type !== "model")) {
+        continue;
+      }
+
+      useStore.getState().updateNodeStatus(nodeId, "queued");
+
+      try {
+        manager.exec(nodeId, node.code);
+      } catch (error) {
+        useStore.getState().updateNodeStatus(nodeId, "error");
+        throw error;
+      }
+
+      const finalStatus = await waitForNodeStatus(nodeId);
+      if (finalStatus !== "success") {
+        throw createPipelineError(nodeId, finalStatus);
+      }
+    }
+  },
   upsertWorker: (worker) =>
     set((state) => {
       const existingIndex = state.workers.findIndex((entry) => entry.id === worker.id);
