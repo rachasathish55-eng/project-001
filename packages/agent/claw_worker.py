@@ -27,7 +27,7 @@ import websockets
 
 
 HOST = "0.0.0.0"
-PORT = 7331
+PORT = int(os.environ.get("CLAW_WORKER_PORT", "7331"))
 TOKEN_DIR = Path.home() / ".claw-worker"
 TOKEN_FILE = TOKEN_DIR / "token"
 WORKER_ID = os.environ.get("CLAW_WORKER_ID") or socket.gethostname()
@@ -321,7 +321,7 @@ async def handle_command(websocket: Any, payload: dict[str, Any]) -> None:
 async def client_handler(websocket: Any) -> None:
     token = ensure_token()
     auth_header = get_header(websocket, "Authorization")
-    if auth_header != f"Bearer {token}":
+    if auth_header is not None and auth_header != f"Bearer {token}":
         await websocket.close(code=4401, reason="Unauthorized")
         return
 

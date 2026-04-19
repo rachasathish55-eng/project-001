@@ -207,7 +207,10 @@ export const useStore = create<StoreState>((set) => ({
       try {
         manager.exec(nodeId, node.code, targetWorker.id);
       } catch (error) {
-        useStore.getState().updateNodeStatus(nodeId, "error");
+        useStore.getState().updateNode(nodeId, {
+          status: "error",
+          lastError: error instanceof Error ? error.message : "Failed to dispatch pipeline execution.",
+        });
         throw error;
       }
 

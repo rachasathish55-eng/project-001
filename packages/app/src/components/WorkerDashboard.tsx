@@ -84,6 +84,7 @@ function WorkerCard({ worker }: { worker: WorkerRecord }) {
       <div className="worker-dashboard__meta">
         <span>{worker.os}</span>
         <span>{worker.workerId}</span>
+        <span>{worker.url}</span>
       </div>
 
       <div className="worker-dashboard__metrics">
@@ -152,7 +153,12 @@ export default function WorkerDashboard() {
           placeholder="ws://localhost:7332"
           aria-label="Worker websocket URL"
         />
-        <button type="button" className="worker-dashboard__action worker-dashboard__action--primary" onClick={handleConnectWorker}>
+        <button
+          type="button"
+          className="worker-dashboard__action worker-dashboard__action--primary"
+          onClick={handleConnectWorker}
+          disabled={!manager}
+        >
           Connect worker
         </button>
       </div>

@@ -25,6 +25,7 @@ export default function WorkerAssignmentSelect({
     () => workers.find((worker) => worker.id === value || worker.workerId === value || worker.url === value) ?? null,
     [value, workers],
   );
+  const selectedValue = selectedWorker?.id ?? value ?? "";
 
   const handleChange = (event: ChangeEvent<HTMLSelectElement>) => {
     updateNode(nodeId, {
@@ -37,7 +38,7 @@ export default function WorkerAssignmentSelect({
       <span className="worker-select__label">Worker</span>
       <select
         className="worker-select__control"
-        value={value ?? ""}
+        value={selectedValue}
         onChange={handleChange}
         aria-label="Assign worker"
       >

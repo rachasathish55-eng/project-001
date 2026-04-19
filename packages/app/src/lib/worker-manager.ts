@@ -146,6 +146,7 @@ export class WorkerManager {
     const connectionId = normalizeUrl(url);
     let connection = this.connections.get(connectionId);
     if (connection && !connection.disposed) {
+      this.clearReconnectTimer(connection);
       void this.ensureConnected(connection);
       return connection.id;
     }
@@ -398,7 +399,6 @@ export class WorkerManager {
     }
 
     connection.activeExecutions.clear();
-    connection.pendingCommands.clear();
     connection.status = "offline";
     this.syncWorkerRecord(connection, "offline");
     this.refreshConnectionState();
