@@ -87,7 +87,8 @@ export default function NotebookCell({ nodeId }: { nodeId: string }) {
             focus: () => {
               setActiveNodeId(nodeId);
             },
-            blur: () => {
+            blur: (_event, view) => {
+              updateNode(nodeId, { code: view.state.doc.toString() });
               if (useStore.getState().activeNodeId === nodeId) {
                 setActiveNodeId(null);
               }
@@ -186,9 +187,15 @@ export default function NotebookCell({ nodeId }: { nodeId: string }) {
 
       <div className="code-cell__editor" ref={hostRef} />
 
-      <section className={`code-cell__output code-cell__output--${output?.tone ?? "empty"}`} aria-live="polite">
-        <span className="code-cell__output-label">Output</span>
-        <pre className="code-cell__output-text">{output?.text ?? ""}</pre>
+      <section className="code-cell__console" aria-live="polite">
+        <div className="code-cell__output code-cell__output--stdout">
+          <span className="code-cell__output-label">stdout</span>
+          <pre className="code-cell__output-text">{node.lastOutput ?? "Run this cell to see output here."}</pre>
+        </div>
+        <div className="code-cell__output code-cell__output--error">
+          <span className="code-cell__output-label">stderr</span>
+          <pre className="code-cell__output-text">{node.lastError ?? "No error output."}</pre>
+        </div>
       </section>
     </motion.article>
   );
