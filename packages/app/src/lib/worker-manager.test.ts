@@ -63,10 +63,12 @@ class FakeSocket {
 
 describe("WorkerManager", () => {
   let socket: FakeSocket;
+  let sockets: Map<string, FakeSocket>;
   let manager: WorkerManager;
 
   beforeEach(() => {
     vi.useFakeTimers();
+    sockets = new Map();
     useStore.setState({
       nodes: [],
       edges: [],
@@ -77,13 +79,17 @@ describe("WorkerManager", () => {
       terminalEntries: [],
     });
     useStore.getState().addNode(createNode("node-1"));
-    socket = new FakeSocket();
     manager = new WorkerManager({
-      socketFactory: () => socket,
+      socketFactory: (url) => {
+        const nextSocket = new FakeSocket();
+        sockets.set(url, nextSocket);
+        return nextSocket;
+      },
       heartbeatIntervalMs: 5000,
       reconnectBaseDelayMs: 10,
       reconnectMaxDelayMs: 10,
     });
+    socket = sockets.get("ws://localhost:7331") ?? new FakeSocket();
     socket.open();
   });
 
@@ -123,7 +129,6 @@ describe("WorkerManager", () => {
     expect(useStore.getState().nodes[0]).toEqual(
       expect.objectContaining({
         status: "success",
-        assignedWorker: null,
       }),
     );
   });
@@ -152,7 +157,9 @@ describe("WorkerManager", () => {
 
     expect(useStore.getState().workers).toEqual([
       expect.objectContaining({
-        id: "worker-1",
+        id: "ws://localhost:7331",
+        url: "ws://localhost:7331",
+        workerId: "worker-1",
         hostname: "worker-host",
         os: "Linux 6.8",
         status: "online",
@@ -161,6 +168,57 @@ describe("WorkerManager", () => {
         gpuPct: 12.5,
       }),
     ]);
+
+    manager.connectWorker("ws://localhost:7332");
+    const secondSocket = sockets.get("ws://localhost:7332");
+    expect(secondSocket).toBeDefined();
+    secondSocket?.open();
+    secondSocket?.message(
+      JSON.stringify({
+        type: "identity",
+        worker_id: "worker-2",
+        hostname: "worker-host-2",
+        os: "Linux 6.8",
+        pid: 100,
+        version: "1.2.4",
+      }),
+    );
+
+    expect(useStore.getState().workers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "ws://localhost:7331",
+          hostname: "worker-host",
+          status: "online",
+        }),
+        expect.objectContaining({
+          id: "ws://localhost:7332",
+          hostname: "worker-host-2",
+          status: "online",
+        }),
+      ]),
+    );
+  });
+
+  it("routes execution to the assigned worker connection", () => {
+    manager.connectWorker("ws://localhost:7332");
+    const secondSocket = sockets.get("ws://localhost:7332");
+    expect(secondSocket).toBeDefined();
+    secondSocket?.open();
+
+    useStore.getState().updateNode("node-1", { assignedWorker: "ws://localhost:7332" });
+
+    const commandId = manager.exec("node-1", "print('assigned')", "ws://localhost:7332");
+
+    expect(socket.sent).toHaveLength(0);
+    expect(JSON.parse(secondSocket?.sent[0] ?? "{}")).toMatchObject({
+      id: commandId,
+      command: "exec",
+      data: {
+        node_id: "node-1",
+        code: "print('assigned')",
+      },
+    });
   });
 
   it("sends heartbeats and handles disconnection", () => {

@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import type { NodeProps } from "reactflow";
 import { Handle, Position } from "reactflow";
 import type { StrawberryNode as StrawberryNodeData } from "@strawberry/shared";
+import WorkerAssignmentSelect from "../WorkerAssignmentSelect";
 
 const statusLabels: Record<StrawberryNodeData["status"], string> = {
   idle: "Idle",
@@ -62,7 +63,7 @@ export default function StrawberryNode({ data }: NodeProps<StrawberryNodeData>) 
 
       <footer className="strawberry-node__footer">
         <span className="strawberry-node__language">{formatLanguage(data.language)}</span>
-        {data.assignedWorker ? <span className="strawberry-node__worker">{data.assignedWorker}</span> : null}
+        <WorkerAssignmentSelect nodeId={data.id} value={data.assignedWorker} className="worker-select--node" />
       </footer>
 
       <Handle type="source" position={Position.Right} className="strawberry-node__handle" />

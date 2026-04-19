@@ -54,6 +54,7 @@ describe("berryFormat", () => {
       workers: [
         {
           id: "worker-1",
+          url: "ws://localhost:7331",
           ts: 123,
           cpuPct: 44.5,
           memPct: 17.25,
@@ -62,11 +63,11 @@ describe("berryFormat", () => {
           hostname: "worker-1.local",
           os: "Linux",
           lastHeartbeatAt: 123,
-          status: "online",
-          pid: 42,
-          version: "1.0.0",
-        },
-      ],
+        status: "online",
+        pid: 42,
+        version: "1.0.0",
+      },
+    ],
       workerStats: {
         ts: 123,
         cpuPct: 44.5,

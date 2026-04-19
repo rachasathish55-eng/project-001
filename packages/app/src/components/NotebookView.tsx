@@ -1,5 +1,5 @@
 import type { StrawberryNode } from "@strawberry/shared";
-import CodeCell from "./CodeCell";
+import NotebookCell from "./NotebookCell";
 import { useStore } from "../store/useStore";
 
 function createScriptNode(index: number): StrawberryNode {
@@ -55,7 +55,7 @@ export default function NotebookView() {
             <span>Add a cell to start building the notebook.</span>
           </div>
         ) : (
-          nodes.map((node) => <CodeCell key={node.id} nodeId={node.id} />)
+          nodes.map((node) => <NotebookCell key={node.id} nodeId={node.id} />)
         )}
       </div>
     </section>

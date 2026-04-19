@@ -111,6 +111,7 @@ describe("useStore", () => {
   it("tracks worker records and offline state", () => {
     useStore.getState().upsertWorker({
       id: "worker-1",
+      url: "ws://localhost:7331",
       ts: 10,
       cpuPct: 15,
       memPct: 20,
@@ -129,6 +130,7 @@ describe("useStore", () => {
     expect(useStore.getState().workers).toEqual([
       expect.objectContaining({
         id: "worker-1",
+        url: "ws://localhost:7331",
         hostname: "worker-1.local",
         os: "Linux",
         status: "offline",
@@ -159,8 +161,11 @@ describe("useStore", () => {
   it("runs the pipeline in topological order and stops on failure", async () => {
     const calls: string[] = [];
     const manager = {
-      exec(nodeId: string, code: string) {
+      exec(nodeId: string, code: string, workerId?: string | null) {
         calls.push(nodeId);
+        if (workerId) {
+          calls.push(workerId);
+        }
         useStore.getState().updateNodeStatus(nodeId, "running");
         queueMicrotask(() => {
           useStore.getState().updateNodeStatus(nodeId, nodeId === "node-a" ? "success" : "success");
@@ -171,16 +176,33 @@ describe("useStore", () => {
 
     useStore.setState({
       nodes: [
-        createNode("node-a", { type: "script", code: "print('Hello')" }),
+        createNode("node-a", { type: "script", code: "print('Hello')", assignedWorker: "worker-1" }),
         createNode("node-b", { type: "script", code: "print('World')" }),
       ],
       edges: [{ source: "node-a", target: "node-b" }],
+      workers: [
+        {
+          id: "worker-1",
+          url: "ws://localhost:7331",
+          ts: 10,
+          cpuPct: 15,
+          memPct: 20,
+          gpuPct: null,
+          workerId: "worker-1",
+          hostname: "worker-1.local",
+          os: "Linux",
+          lastHeartbeatAt: 10,
+          status: "online",
+          pid: 42,
+          version: "1.0.0",
+        },
+      ],
       workerManager: manager,
     });
 
     await useStore.getState().runPipeline();
 
-    expect(calls).toEqual(["node-a", "node-b"]);
+    expect(calls).toEqual(["node-a", "worker-1", "node-b", "worker-1"]);
     expect(useStore.getState().nodes.map((node) => node.status)).toEqual(["success", "success"]);
   });
 
@@ -204,6 +226,23 @@ describe("useStore", () => {
       ],
       edges: [{ source: "node-a", target: "node-b" }],
       workerManager: manager,
+      workers: [
+        {
+          id: "worker-1",
+          url: "ws://localhost:7331",
+          ts: 10,
+          cpuPct: 15,
+          memPct: 20,
+          gpuPct: null,
+          workerId: "worker-1",
+          hostname: "worker-1.local",
+          os: "Linux",
+          lastHeartbeatAt: 10,
+          status: "online",
+          pid: 42,
+          version: "1.0.0",
+        },
+      ],
     });
 
     await expect(useStore.getState().runPipeline()).rejects.toThrow("Pipeline aborted at node node-a: error");

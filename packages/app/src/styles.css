@@ -290,6 +290,55 @@ textarea {
   letter-spacing: 0.12em;
 }
 
+.worker-dashboard__composer {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.worker-dashboard__input {
+  flex: 1;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  color: var(--text-main);
+}
+
+.worker-dashboard__input::placeholder {
+  color: var(--text-subtle);
+}
+
+.worker-dashboard__action {
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.worker-dashboard__action--primary {
+  border-color: var(--accent-glow);
+  background: var(--accent-surface);
+}
+
+.worker-dashboard__action:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+
+.worker-dashboard__action--primary:hover:not(:disabled) {
+  background: var(--accent-surface-strong);
+}
+
+.worker-dashboard__action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .worker-dashboard__list {
   display: grid;
   gap: 12px;
@@ -574,6 +623,8 @@ textarea {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .code-cell__status {
@@ -625,6 +676,46 @@ textarea {
 .code-cell__run:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.worker-select {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.worker-select__label {
+  color: var(--text-subtle);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.worker-select__control {
+  min-height: 34px;
+  max-width: 100%;
+  padding: 0 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  color: var(--text-main);
+}
+
+.worker-select--compact {
+  min-width: 180px;
+}
+
+.worker-select--node {
+  min-width: 160px;
+  margin-left: auto;
+}
+
+.strawberry-node__footer .worker-select {
+  flex: 1;
+}
+
+.strawberry-node__footer .worker-select__control {
+  width: 100%;
 }
 
 .code-cell__editor {
@@ -977,6 +1068,7 @@ textarea {
 
 .strawberry-node__footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   margin-top: 14px;

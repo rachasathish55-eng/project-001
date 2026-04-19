@@ -174,13 +174,14 @@ export const useStore = create<StoreState>((set) => ({
 
     const orderedNodeIds = topologicalSort(state.nodes, state.edges as EdgeLike[]);
     const nodesById = new Map(state.nodes.map((node) => [node.id, node] as const));
-    const workersById = new Map(
-      state.workers.flatMap((worker) => [
-        [worker.id, worker],
-        [worker.workerId, worker],
-        [worker.url, worker],
-      ]) as Array<[string | null, WorkerRecord]>,
-    );
+    const workersById = new Map<string, WorkerRecord>();
+    for (const worker of state.workers) {
+      workersById.set(worker.id, worker);
+      workersById.set(worker.url, worker);
+      if (worker.workerId) {
+        workersById.set(worker.workerId, worker);
+      }
+    }
 
     for (const nodeId of orderedNodeIds) {
       const node = nodesById.get(nodeId);

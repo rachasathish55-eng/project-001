@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ChangeEvent } from "react";
 import { useStore } from "../store/useStore";
 
 function formatWorkerLabel(id: string, hostname: string | null, workerId: string | null, url: string): string {
@@ -26,7 +26,7 @@ export default function WorkerAssignmentSelect({
     [value, workers],
   );
 
-  const handleChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleChange = (event: ChangeEvent<HTMLSelectElement>) => {
     updateNode(nodeId, {
       assignedWorker: event.target.value.length > 0 ? event.target.value : null,
     });

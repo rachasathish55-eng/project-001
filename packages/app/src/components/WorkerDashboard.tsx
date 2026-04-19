@@ -1,5 +1,7 @@
 import { motion } from "framer-motion";
+import { useState } from "react";
 import { useStore, type WorkerRecord } from "../store/useStore";
+import { useWorkerManager } from "../lib/worker-manager-context";
 
 const percentFormatter = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 1,
@@ -62,6 +64,8 @@ function ResourceGauge({
 }
 
 function WorkerCard({ worker }: { worker: WorkerRecord }) {
+  const manager = useWorkerManager();
+
   return (
     <motion.article
       className={`worker-dashboard__card worker-dashboard__card--${worker.status}`}
@@ -91,6 +95,14 @@ function WorkerCard({ worker }: { worker: WorkerRecord }) {
       <div className="worker-dashboard__footer">
         <span>Last seen {formatLastSeen(worker.lastHeartbeatAt)}</span>
         {worker.version ? <span>{worker.version}</span> : null}
+        <button
+          type="button"
+          className="worker-dashboard__action"
+          onClick={() => manager?.disconnectWorker(worker.id)}
+          disabled={!manager}
+        >
+          Disconnect
+        </button>
       </div>
     </motion.article>
   );
@@ -99,7 +111,19 @@ function WorkerCard({ worker }: { worker: WorkerRecord }) {
 export default function WorkerDashboard() {
   const workers = useStore((state) => state.workers);
   const connectionState = useStore((state) => state.connectionState);
+  const manager = useWorkerManager();
+  const [workerUrl, setWorkerUrl] = useState("ws://localhost:7332");
   const onlineCount = workers.filter((worker) => worker.status === "online").length;
+
+  const handleConnectWorker = () => {
+    const nextUrl = workerUrl.trim();
+    if (!nextUrl) {
+      return;
+    }
+
+    manager?.connectWorker(nextUrl);
+    setWorkerUrl(nextUrl);
+  };
 
   return (
     <aside className="worker-dashboard">
@@ -119,6 +143,19 @@ export default function WorkerDashboard() {
           <span>online</span>
         </div>
       </header>
+
+      <div className="worker-dashboard__composer">
+        <input
+          className="worker-dashboard__input"
+          value={workerUrl}
+          onChange={(event) => setWorkerUrl(event.target.value)}
+          placeholder="ws://localhost:7332"
+          aria-label="Worker websocket URL"
+        />
+        <button type="button" className="worker-dashboard__action worker-dashboard__action--primary" onClick={handleConnectWorker}>
+          Connect worker
+        </button>
+      </div>
 
       <div className="worker-dashboard__list">
         {workers.length === 0 ? (
