@@ -1,4 +1,4 @@
-import type { StrawberryNode } from "../../../../shared/src";
+import type { StrawberryNode } from "@strawberry/shared";
 
 export interface GraphEdgeLike {
   source?: string;
