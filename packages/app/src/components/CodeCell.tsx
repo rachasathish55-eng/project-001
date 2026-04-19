@@ -30,7 +30,7 @@ const codeMirrorTheme = EditorView.theme(
     ".cm-cursor, .cm-dropCursor": {
       borderLeftColor: "var(--accent)",
     },
-    "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": {
+    "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
       backgroundColor: "var(--accent-soft) !important",
     },
     ".cm-tooltip": {

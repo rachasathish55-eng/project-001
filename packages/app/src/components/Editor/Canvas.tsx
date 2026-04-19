@@ -175,10 +175,10 @@ export default function Canvas() {
             className="canvas-shell__minimap"
             nodeColor={(node) => {
               const status = (node.data as StrawberryNodeData | undefined)?.status;
-               if (status === "success") return "#34d399";
-               if (status === "running") return "#60a5fa";
-               if (status === "error") return "#fb7185";
-               return "#7c4dff";
+              if (status === "success") return "#34d399";
+              if (status === "running") return "#60a5fa";
+              if (status === "error") return "#fb7185";
+              return "#7c4dff";
             }}
           />
           <Panel position="top-left">
