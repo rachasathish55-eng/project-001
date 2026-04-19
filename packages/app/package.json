@@ -10,6 +10,11 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@codemirror/lang-python": "^6.2.1",
+    "@codemirror/language": "^6.12.3",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/theme-one-dark": "^6.1.3",
+    "@codemirror/view": "^6.41.1",
     "@strawberry/shared": "workspace:^",
     "@tauri-apps/api": "^2.10.1",
     "framer-motion": "12.38.0",
