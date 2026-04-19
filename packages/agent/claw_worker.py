@@ -6,7 +6,11 @@ import base64
 import contextlib
 import json
 import os
+import platform
+import shutil
 import secrets
+import socket
+import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
@@ -26,6 +30,8 @@ HOST = "0.0.0.0"
 PORT = 7331
 TOKEN_DIR = Path.home() / ".claw-worker"
 TOKEN_FILE = TOKEN_DIR / "token"
+WORKER_ID = os.environ.get("CLAW_WORKER_ID") or socket.gethostname()
+WORKER_VERSION = os.environ.get("CLAW_WORKER_VERSION")
 
 
 def ensure_token() -> str:
@@ -47,10 +53,30 @@ def get_header(websocket: Any, name: str) -> str | None:
     return headers.get(name)
 
 
-def cpu_mem_stats() -> dict[str, float]:
+def resource_stats() -> dict[str, float | None]:
+    gpu_pct: float | None = None
+    if shutil.which("nvidia-smi") is not None:
+        try:
+            result = subprocess.run(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=utilization.gpu",
+                    "--format=csv,noheader,nounits",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=1,
+            )
+            raw_gpu_pct = result.stdout.strip().splitlines()[0].strip()
+            gpu_pct = float(raw_gpu_pct) if raw_gpu_pct else None
+        except (OSError, ValueError, subprocess.SubprocessError):
+            gpu_pct = None
+
     return {
         "cpu_pct": psutil.cpu_percent(interval=None),
         "mem_pct": psutil.virtual_memory().percent,
+        "gpu_pct": gpu_pct,
     }
 
 
@@ -116,7 +142,7 @@ async def finalize_job(job: ScriptJob, websocket: Any, message_id: str, data: An
 async def heartbeat_loop(websocket: Any) -> None:
     while True:
         await asyncio.sleep(5)
-        stats = cpu_mem_stats()
+        stats = resource_stats()
         await send_json(
             websocket,
             {
@@ -124,6 +150,12 @@ async def heartbeat_loop(websocket: Any) -> None:
                 "ts": time.time(),
                 "cpu_pct": stats["cpu_pct"],
                 "mem_pct": stats["mem_pct"],
+                "gpu_pct": stats["gpu_pct"],
+                "worker_id": WORKER_ID,
+                "hostname": socket.gethostname(),
+                "os": platform.platform(),
+                "pid": os.getpid(),
+                "version": WORKER_VERSION,
             },
         )
 
@@ -212,7 +244,7 @@ async def stop_script(websocket: Any, message_id: str, data: dict[str, Any]) -> 
 
 
 async def get_status(websocket: Any, message_id: str) -> None:
-    stats = cpu_mem_stats()
+    stats = resource_stats()
     await send_result(
         websocket,
         message_id,
@@ -220,6 +252,7 @@ async def get_status(websocket: Any, message_id: str) -> None:
             "ts": time.time(),
             "cpu_pct": stats["cpu_pct"],
             "mem_pct": stats["mem_pct"],
+            "gpu_pct": stats["gpu_pct"],
         },
     )
 
@@ -291,6 +324,18 @@ async def client_handler(websocket: Any) -> None:
     if auth_header != f"Bearer {token}":
         await websocket.close(code=4401, reason="Unauthorized")
         return
+
+    await send_json(
+        websocket,
+        {
+            "type": "identity",
+            "worker_id": WORKER_ID,
+            "hostname": socket.gethostname(),
+            "os": platform.platform(),
+            "pid": os.getpid(),
+            "version": WORKER_VERSION,
+        },
+    )
 
     connection_jobs: set[str] = set()
     heartbeat_task = asyncio.create_task(heartbeat_loop(websocket))

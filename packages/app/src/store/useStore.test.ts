@@ -27,6 +27,7 @@ describe("useStore", () => {
     useStore.setState({
       nodes: [],
       edges: [],
+      workers: [],
       workerStats: null,
       connectionState: "disconnected",
       terminalEntries: [],
@@ -79,7 +80,10 @@ describe("useStore", () => {
       ts: 123,
       cpuPct: 42,
       memPct: 17,
+      gpuPct: 9,
       workerId: "worker-1",
+      hostname: "worker-host",
+      os: "Linux 6.8",
       lastHeartbeatAt: 456,
     });
     useStore.getState().setConnectionState("connected");
@@ -94,10 +98,41 @@ describe("useStore", () => {
       ts: 123,
       cpuPct: 42,
       memPct: 17,
+      gpuPct: 9,
       workerId: "worker-1",
+      hostname: "worker-host",
+      os: "Linux 6.8",
       lastHeartbeatAt: 456,
     });
     expect(useStore.getState().connectionState).toBe("connected");
+  });
+
+  it("tracks worker records and offline state", () => {
+    useStore.getState().upsertWorker({
+      id: "worker-1",
+      ts: 10,
+      cpuPct: 15,
+      memPct: 20,
+      gpuPct: null,
+      workerId: "worker-1",
+      hostname: "worker-1.local",
+      os: "Linux",
+      lastHeartbeatAt: 10,
+      status: "online",
+      pid: 42,
+      version: "1.0.0",
+    });
+
+    useStore.getState().markWorkerOffline("worker-1");
+
+    expect(useStore.getState().workers).toEqual([
+      expect.objectContaining({
+        id: "worker-1",
+        hostname: "worker-1.local",
+        os: "Linux",
+        status: "offline",
+      }),
+    ]);
   });
 
   it("stores terminal entries with a fixed capacity", () => {

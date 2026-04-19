@@ -7,7 +7,7 @@ import type {
   WorkerRealtimeStreamEvent,
   WorkerTelemetryEvent,
 } from "@strawberry/shared";
-import { useStore } from "../store/useStore";
+import { useStore, type WorkerRecord } from "../store/useStore";
 import { createTerminalLogEntry, splitTerminalChunk } from "./terminal-logs";
 
 type WorkerSocketLike = Pick<WebSocket, "close" | "send" | "addEventListener" | "removeEventListener"> & {
@@ -25,6 +25,15 @@ type ActiveExecution = {
 type PendingCommand = {
   kind: "exec" | "kill" | "status";
   nodeId?: string;
+};
+
+type TelemetryLike = WorkerTelemetryEvent & {
+  worker_id?: string;
+  hostname?: string;
+  os?: string;
+  pid?: number;
+  version?: string;
+  gpu_pct?: number | null;
 };
 
 export interface WorkerManagerOptions {
@@ -64,6 +73,10 @@ export class WorkerManager {
   private reconnectAttempts = 0;
   private disposed = false;
   private workerId: string | null = null;
+  private workerHostname: string | null = null;
+  private workerOs: string | null = null;
+  private workerPid: number | null = null;
+  private workerVersion: string | null = null;
   private commandSequence = 0;
   private readonly outboundQueue: WorkerOutboundMessage[] = [];
   private readonly pendingCommands = new Map<string, PendingCommand>();
@@ -251,6 +264,10 @@ export class WorkerManager {
     }
 
     this.executionsByNodeId.clear();
+    const workerKey = this.workerIdentityKey();
+    if (workerKey) {
+      useStore.getState().markWorkerOffline(workerKey);
+    }
     useStore.getState().setConnectionState("disconnected");
 
     if (!this.disposed) {
@@ -304,22 +321,37 @@ export class WorkerManager {
   private handleIdentity(message: WorkerIdentityEvent): void {
     const workerId = message.worker_id ?? message.workerId ?? null;
     this.workerId = workerId;
+    this.workerHostname = message.hostname ?? this.workerHostname;
+    this.workerOs = message.os ?? this.workerOs;
+    this.workerPid = typeof message.pid === "number" ? message.pid : this.workerPid;
+    this.workerVersion = message.version ?? this.workerVersion;
 
     const stats = useStore.getState().workerStats;
-    if (stats) {
-      useStore.getState().setWorkerStats({
-        ...stats,
-        workerId,
-      });
-    } else {
-      useStore.getState().setWorkerStats({
-        ts: Date.now(),
-        cpuPct: 0,
-        memPct: 0,
-        workerId,
-        lastHeartbeatAt: null,
-      });
-    }
+    useStore.getState().setWorkerStats({
+      ts: stats?.ts ?? Date.now(),
+      cpuPct: stats?.cpuPct ?? 0,
+      memPct: stats?.memPct ?? 0,
+      gpuPct: stats?.gpuPct ?? null,
+      workerId,
+      hostname: this.workerHostname,
+      os: this.workerOs,
+      lastHeartbeatAt: stats?.lastHeartbeatAt ?? null,
+    });
+
+    this.upsertWorker({
+      id: this.workerIdentityKey(workerId, this.workerHostname),
+      ts: stats?.ts ?? Date.now(),
+      cpuPct: stats?.cpuPct ?? 0,
+      memPct: stats?.memPct ?? 0,
+      gpuPct: stats?.gpuPct ?? null,
+      workerId,
+      hostname: this.workerHostname,
+      os: this.workerOs,
+      lastHeartbeatAt: stats?.lastHeartbeatAt ?? null,
+      status: "online",
+      pid: this.workerPid,
+      version: this.workerVersion,
+    });
 
     for (const nodeId of this.executionsByNodeId.keys()) {
       useStore.getState().updateNode(nodeId, {
@@ -328,16 +360,32 @@ export class WorkerManager {
     }
   }
 
-  private handleTelemetry(message: WorkerTelemetryEvent | { type: "heartbeat"; ts: number; cpu_pct: number; mem_pct: number }): void {
+  private handleTelemetry(message: TelemetryLike | { type: "heartbeat"; ts: number; cpu_pct: number; mem_pct: number; gpu_pct?: number | null }): void {
+    const workerId = message.worker_id ?? this.workerId;
+    const hostname = message.hostname ?? this.workerHostname;
+    const os = message.os ?? this.workerOs;
+    const pid = typeof message.pid === "number" ? message.pid : this.workerPid;
+    const version = message.version ?? this.workerVersion;
     const stats = {
       ts: message.ts,
       cpuPct: message.cpu_pct,
       memPct: message.mem_pct,
-      workerId: this.workerId,
+      gpuPct: message.gpu_pct ?? null,
+      workerId,
+      hostname,
+      os,
       lastHeartbeatAt: Date.now(),
     };
 
     useStore.getState().setWorkerStats(stats);
+    this.upsertWorker({
+      id: this.workerIdentityKey(workerId, hostname),
+      ...stats,
+      status: "online",
+      pid,
+      version,
+      workerId,
+    });
   }
 
   private handlePong(message: WorkerPongEvent): void {
@@ -347,8 +395,25 @@ export class WorkerManager {
         ts: message.ts ?? Date.now(),
         cpuPct: 0,
         memPct: 0,
+        gpuPct: null,
         workerId: this.workerId,
+        hostname: this.workerHostname,
+        os: this.workerOs,
         lastHeartbeatAt: Date.now(),
+      });
+      this.upsertWorker({
+        id: this.workerIdentityKey(),
+        ts: message.ts ?? Date.now(),
+        cpuPct: 0,
+        memPct: 0,
+        gpuPct: null,
+        workerId: this.workerId,
+        hostname: this.workerHostname,
+        os: this.workerOs,
+        lastHeartbeatAt: Date.now(),
+        status: "online",
+        pid: this.workerPid,
+        version: this.workerVersion,
       });
       return;
     }
@@ -356,6 +421,14 @@ export class WorkerManager {
     useStore.getState().setWorkerStats({
       ...stats,
       lastHeartbeatAt: Date.now(),
+    });
+    this.upsertWorker({
+      id: this.workerIdentityKey(stats.workerId, stats.hostname),
+      ...stats,
+      status: "online",
+      lastHeartbeatAt: Date.now(),
+      pid: this.workerPid,
+      version: this.workerVersion,
     });
   }
 
@@ -389,6 +462,7 @@ export class WorkerManager {
         ts: pickNumber(payload.ts) ?? Date.now(),
         cpu_pct: pickNumber(payload.cpu_pct) ?? 0,
         mem_pct: pickNumber(payload.mem_pct) ?? 0,
+        gpu_pct: typeof payload.gpu_pct === "number" ? payload.gpu_pct : null,
       });
       if (typeof message.id === "string") {
         this.pendingCommands.delete(message.id);
@@ -522,6 +596,14 @@ export class WorkerManager {
   private nextCommandId(): string {
     this.commandSequence += 1;
     return `worker-${Date.now()}-${this.commandSequence}`;
+  }
+
+  private workerIdentityKey(workerId: string | null = this.workerId, hostname: string | null = this.workerHostname): string {
+    return workerId ?? hostname ?? "worker-local";
+  }
+
+  private upsertWorker(worker: WorkerRecord): void {
+    useStore.getState().upsertWorker(worker);
   }
 
   private appendTerminalStream(nodeId: string, stream: "stdout" | "stderr", data: string): void {

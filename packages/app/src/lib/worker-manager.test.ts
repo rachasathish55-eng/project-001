@@ -70,6 +70,7 @@ describe("WorkerManager", () => {
     useStore.setState({
       nodes: [],
       edges: [],
+      workers: [],
       workerStats: null,
       connectionState: "disconnected",
       terminalEntries: [],
@@ -124,6 +125,41 @@ describe("WorkerManager", () => {
         assignedWorker: null,
       }),
     );
+  });
+
+  it("tracks worker identity and telemetry", () => {
+    socket.message(
+      JSON.stringify({
+        type: "identity",
+        worker_id: "worker-1",
+        hostname: "worker-host",
+        os: "Linux 6.8",
+        pid: 99,
+        version: "1.2.3",
+      }),
+    );
+
+    socket.message(
+      JSON.stringify({
+        type: "telemetry",
+        ts: 123,
+        cpu_pct: 31.2,
+        mem_pct: 45.6,
+        gpu_pct: 12.5,
+      }),
+    );
+
+    expect(useStore.getState().workers).toEqual([
+      expect.objectContaining({
+        id: "worker-1",
+        hostname: "worker-host",
+        os: "Linux 6.8",
+        status: "online",
+        cpuPct: 31.2,
+        memPct: 45.6,
+        gpuPct: 12.5,
+      }),
+    ]);
   });
 
   it("sends heartbeats and handles disconnection", () => {

@@ -141,6 +141,7 @@ export interface WorkerIdentityEvent {
   worker_id?: string;
   workerId?: string;
   hostname?: string;
+  os?: string;
   pid?: number;
   version?: string;
 }
@@ -150,6 +151,12 @@ export interface WorkerTelemetryEvent {
   ts: number;
   cpu_pct: number;
   mem_pct: number;
+  gpu_pct?: number | null;
+  worker_id?: string;
+  hostname?: string;
+  os?: string;
+  pid?: number;
+  version?: string;
 }
 
 export interface WorkerPongEvent {

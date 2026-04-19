@@ -6,8 +6,18 @@ export interface WorkerStats {
   ts: number;
   cpuPct: number;
   memPct: number;
+  gpuPct: number | null;
   workerId: string | null;
+  hostname: string | null;
+  os: string | null;
   lastHeartbeatAt: number | null;
+}
+
+export interface WorkerRecord extends WorkerStats {
+  id: string;
+  status: "online" | "offline";
+  pid: number | null;
+  version: string | null;
 }
 
 type EdgeLike = { source?: string; target?: string; from?: string; to?: string };
@@ -15,6 +25,7 @@ type EdgeLike = { source?: string; target?: string; from?: string; to?: string }
 export interface StoreState {
   nodes: StrawberryNode[];
   edges: any[];
+  workers: WorkerRecord[];
   workerStats: WorkerStats | null;
   connectionState: "disconnected" | "connecting" | "connected" | "reconnecting";
   terminalEntries: TerminalLogEntry[];
@@ -27,16 +38,29 @@ export interface StoreState {
   appendOutput: (id: string, stream: "stdout" | "stderr", chunk: string) => void;
   appendTerminalEntries: (entries: TerminalLogEntry[]) => void;
   clearTerminalEntries: () => void;
+  upsertWorker: (worker: WorkerRecord) => void;
+  markWorkerOffline: (workerId: string) => void;
   setWorkerStats: (stats: WorkerStats) => void;
   setConnectionState: (state: StoreState["connectionState"]) => void;
 }
 
 const touchesNode = (edge: EdgeLike, nodeId: string) => edge.source === nodeId || edge.target === nodeId || edge.from === nodeId || edge.to === nodeId;
 const appendChunk = (existing: string | null | undefined, chunk: string) => (existing && existing.length > 0 ? `${existing}${chunk}` : chunk);
+const clampPercent = (value: number | null | undefined) => (typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0);
+const normalizeNullableString = (value: string | null | undefined) => (typeof value === "string" && value.trim().length > 0 ? value : null);
+const sortWorkers = (workers: WorkerRecord[]) =>
+  [...workers].sort((left, right) => {
+    if (left.status !== right.status) {
+      return left.status === "online" ? -1 : 1;
+    }
+
+    return left.hostname.localeCompare(right.hostname) || left.id.localeCompare(right.id);
+  });
 
 export const useStore = create<StoreState>((set) => ({
   nodes: [],
   edges: [],
+  workers: [],
   workerStats: null,
   connectionState: "disconnected",
   terminalEntries: [],
@@ -92,6 +116,48 @@ export const useStore = create<StoreState>((set) => ({
   clearTerminalEntries: () =>
     set(() => ({
       terminalEntries: [],
+    })),
+  upsertWorker: (worker) =>
+    set((state) => {
+      const existingIndex = state.workers.findIndex((entry) => entry.id === worker.id);
+      const existing = existingIndex >= 0 ? state.workers[existingIndex] : undefined;
+      const nextWorker: WorkerRecord = {
+        ...existing,
+        ...worker,
+        id: worker.id,
+        hostname: normalizeNullableString(worker.hostname) ?? existing?.hostname ?? worker.id,
+        os: normalizeNullableString(worker.os) ?? existing?.os ?? "Unknown OS",
+        workerId: normalizeNullableString(worker.workerId) ?? existing?.workerId ?? worker.id,
+        status: worker.status,
+        cpuPct: clampPercent(worker.cpuPct),
+        memPct: clampPercent(worker.memPct),
+        gpuPct: worker.gpuPct === null ? null : clampPercent(worker.gpuPct),
+        lastHeartbeatAt: worker.lastHeartbeatAt ?? existing?.lastHeartbeatAt ?? null,
+        pid: worker.pid ?? existing?.pid ?? null,
+        version: normalizeNullableString(worker.version) ?? existing?.version ?? null,
+      };
+
+      const workers =
+        existingIndex >= 0
+          ? state.workers.map((entry, index) => (index === existingIndex ? nextWorker : entry))
+          : [...state.workers, nextWorker];
+
+      return {
+        workers: sortWorkers(workers),
+      };
+    }),
+  markWorkerOffline: (workerId) =>
+    set((state) => ({
+      workers: sortWorkers(
+        state.workers.map((worker) =>
+          worker.id === workerId || worker.workerId === workerId
+            ? {
+                ...worker,
+                status: "offline",
+              }
+            : worker,
+        ),
+      ),
     })),
   setWorkerStats: (stats) =>
     set(() => ({
