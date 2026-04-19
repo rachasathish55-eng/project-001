@@ -1,3 +1,4 @@
+import { AnimatePresence, motion } from "framer-motion";
 import type { StrawberryNode } from "@strawberry/shared";
 import NotebookCell from "./NotebookCell";
 import { useStore } from "../store/useStore";
@@ -50,12 +51,30 @@ export default function NotebookView() {
 
       <div className="notebook-view__list">
         {nodes.length === 0 ? (
-          <div className="notebook-view__empty">
+          <motion.div
+            className="notebook-view__empty"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.18, ease: "easeInOut" }}
+          >
             <strong>No script nodes yet</strong>
             <span>Add a cell to start building the notebook.</span>
-          </div>
+          </motion.div>
         ) : (
-          nodes.map((node) => <NotebookCell key={node.id} nodeId={node.id} />)
+          <AnimatePresence initial={false} mode="popLayout">
+            {nodes.map((node) => (
+              <motion.div
+                key={node.id}
+                layout
+                initial={{ opacity: 0, y: 10, scale: 0.985 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.98 }}
+                transition={{ duration: 0.2, ease: "easeInOut" }}
+              >
+                <NotebookCell nodeId={node.id} />
+              </motion.div>
+            ))}
+          </AnimatePresence>
         )}
       </div>
     </section>

@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
 import { useStore, type WorkerRecord } from "../store/useStore";
 import { useWorkerManager } from "../lib/worker-manager-context";
@@ -69,9 +69,11 @@ function WorkerCard({ worker }: { worker: WorkerRecord }) {
   return (
     <motion.article
       className={`worker-dashboard__card worker-dashboard__card--${worker.status}`}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, ease: "easeOut" }}
+      layout
+      initial={{ opacity: 0, y: 10, scale: 0.985 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -8, scale: 0.98 }}
+      transition={{ duration: 0.2, ease: "easeInOut" }}
     >
       <div className="worker-dashboard__card-header">
         <div>
@@ -109,7 +111,13 @@ function WorkerCard({ worker }: { worker: WorkerRecord }) {
   );
 }
 
-export default function WorkerDashboard() {
+export default function WorkerDashboard({
+  isOpen,
+  onToggle,
+}: {
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
   const workers = useStore((state) => state.workers);
   const connectionState = useStore((state) => state.connectionState);
   const manager = useWorkerManager();
@@ -127,7 +135,13 @@ export default function WorkerDashboard() {
   };
 
   return (
-    <aside className="worker-dashboard">
+    <motion.aside
+      className={`worker-dashboard${isOpen ? "" : " worker-dashboard--collapsed"}`}
+      layout
+      initial={false}
+      animate={{ opacity: 1, x: isOpen ? 0 : -4 }}
+      transition={{ duration: 0.22, ease: "easeInOut" }}
+    >
       <header className="worker-dashboard__header">
         <div>
           <span className="worker-dashboard__eyebrow">Workers</span>
@@ -143,36 +157,58 @@ export default function WorkerDashboard() {
           <strong>{onlineCount}</strong>
           <span>online</span>
         </div>
-      </header>
 
-      <div className="worker-dashboard__composer">
-        <input
-          className="worker-dashboard__input"
-          value={workerUrl}
-          onChange={(event) => setWorkerUrl(event.target.value)}
-          placeholder="ws://localhost:7332"
-          aria-label="Worker websocket URL"
-        />
         <button
           type="button"
-          className="worker-dashboard__action worker-dashboard__action--primary"
-          onClick={handleConnectWorker}
-          disabled={!manager}
+          className="worker-dashboard__toggle"
+          onClick={onToggle}
+          aria-expanded={isOpen}
         >
-          Connect worker
+          {isOpen ? "Collapse" : "Expand"}
         </button>
-      </div>
+      </header>
 
-      <div className="worker-dashboard__list">
-        {workers.length === 0 ? (
-          <div className="worker-dashboard__empty">
-            <strong>No workers connected</strong>
-            <span>Telemetry gauges will appear here when the daemon reports in.</span>
-          </div>
-        ) : (
-          workers.map((worker) => <WorkerCard key={worker.id} worker={worker} />)
-        )}
-      </div>
-    </aside>
+      <AnimatePresence initial={false}>
+        {isOpen ? (
+          <motion.div
+            key="worker-dashboard-body"
+            className="worker-dashboard__body"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.18, ease: "easeInOut" }}
+          >
+            <div className="worker-dashboard__composer">
+              <input
+                className="worker-dashboard__input"
+                value={workerUrl}
+                onChange={(event) => setWorkerUrl(event.target.value)}
+                placeholder="ws://localhost:7332"
+                aria-label="Worker websocket URL"
+              />
+              <button
+                type="button"
+                className="worker-dashboard__action worker-dashboard__action--primary"
+                onClick={handleConnectWorker}
+                disabled={!manager}
+              >
+                Connect worker
+              </button>
+            </div>
+
+            <div className="worker-dashboard__list">
+              {workers.length === 0 ? (
+                <div className="worker-dashboard__empty">
+                  <strong>No workers connected</strong>
+                  <span>Telemetry gauges will appear here when the daemon reports in.</span>
+                </div>
+              ) : (
+                workers.map((worker) => <WorkerCard key={worker.id} worker={worker} />)
+              )}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </motion.aside>
   );
 }

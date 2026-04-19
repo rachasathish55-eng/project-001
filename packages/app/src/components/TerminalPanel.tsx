@@ -1,3 +1,4 @@
+import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import type { TerminalLogEntry } from "../lib/terminal-logs";
 import { useStore } from "../store/useStore";
@@ -55,7 +56,7 @@ export default function TerminalPanel() {
   };
 
   return (
-    <section className={`terminal-panel${collapsed ? " terminal-panel--collapsed" : ""}`}>
+    <motion.section className={`terminal-panel${collapsed ? " terminal-panel--collapsed" : ""}`} layout>
       <header className="terminal-panel__header">
         <div>
           <span className="terminal-panel__eyebrow">Terminal</span>
@@ -84,30 +85,39 @@ export default function TerminalPanel() {
         </div>
       </header>
 
-      {!collapsed ? (
-        <div className="terminal-panel__body">
-          <div className="terminal-panel__viewport" ref={viewportRef} onScroll={handleScroll}>
-            {entries.length === 0 ? (
-              <div className="terminal-panel__empty">Run a script node to stream stdout and stderr here.</div>
-            ) : (
-              entries.map((entry) => {
-                const nodeLabel = formatNodeLabel(entry);
+      <AnimatePresence initial={false}>
+        {!collapsed ? (
+          <motion.div
+            key="terminal-panel-body"
+            className="terminal-panel__body"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.18, ease: "easeInOut" }}
+          >
+            <div className="terminal-panel__viewport" ref={viewportRef} onScroll={handleScroll}>
+              {entries.length === 0 ? (
+                <div className="terminal-panel__empty">Run a script node to stream stdout and stderr here.</div>
+              ) : (
+                entries.map((entry) => {
+                  const nodeLabel = formatNodeLabel(entry);
 
-                return (
-                  <div key={entry.id} className={`terminal-panel__line terminal-panel__line--${entry.stream}`}>
-                    <span className="terminal-panel__timestamp">{formatTimestamp(entry.ts)}</span>
-                    <span className={`terminal-panel__stream terminal-panel__stream--${entry.stream}`}>
-                      {entry.stream}
-                    </span>
-                    {nodeLabel ? <span className="terminal-panel__node">{nodeLabel}</span> : null}
-                    <span className="terminal-panel__text">{entry.text}</span>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      ) : null}
-    </section>
+                  return (
+                    <div key={entry.id} className={`terminal-panel__line terminal-panel__line--${entry.stream}`}>
+                      <span className="terminal-panel__timestamp">{formatTimestamp(entry.ts)}</span>
+                      <span className={`terminal-panel__stream terminal-panel__stream--${entry.stream}`}>
+                        {entry.stream}
+                      </span>
+                      {nodeLabel ? <span className="terminal-panel__node">{nodeLabel}</span> : null}
+                      <span className="terminal-panel__text">{entry.text}</span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </motion.section>
   );
 }

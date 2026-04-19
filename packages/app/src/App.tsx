@@ -10,6 +10,7 @@ import { useStore } from "./store/useStore";
 
 export default function App() {
   const [viewMode, setViewMode] = useState<"canvas" | "notebook">("canvas");
+  const [isWorkerDashboardOpen, setIsWorkerDashboardOpen] = useState(true);
   const [manager, setManager] = useState<WorkerManager | null>(null);
 
   useEffect(() => {
@@ -28,8 +29,10 @@ export default function App() {
       <main className="app-shell">
         <Header viewMode={viewMode} onViewModeChange={setViewMode} />
 
-        <section className="workspace-shell">
-          <WorkerDashboard />
+        <section
+          className={`workspace-shell${isWorkerDashboardOpen ? "" : " workspace-shell--dashboard-collapsed"}`}
+        >
+          <WorkerDashboard isOpen={isWorkerDashboardOpen} onToggle={() => setIsWorkerDashboardOpen((current) => !current)} />
 
           <section className="workspace-main">
             {viewMode === "canvas" ? (

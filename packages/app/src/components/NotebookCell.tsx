@@ -1,3 +1,4 @@
+import { motion } from "framer-motion";
 import { useEffect, useMemo, useRef } from "react";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -143,7 +144,7 @@ export default function NotebookCell({ nodeId }: { nodeId: string }) {
   };
 
   return (
-    <article className={`code-cell code-cell--${node.status}`}>
+    <motion.article className={`code-cell code-cell--${node.status}`} layout>
       <header className="code-cell__header">
         <div>
           <span className="code-cell__eyebrow">Script cell</span>
@@ -152,7 +153,24 @@ export default function NotebookCell({ nodeId }: { nodeId: string }) {
 
         <div className="code-cell__controls">
           <WorkerAssignmentSelect nodeId={nodeId} value={node.assignedWorker} className="worker-select--compact" />
-          <span className={`code-cell__status code-cell__status--${node.status}`}>{node.status}</span>
+          <motion.span
+            className={`code-cell__status code-cell__status--${node.status}`}
+            animate={
+              node.status === "running"
+                ? {
+                    scale: [1, 1.035, 1],
+                    opacity: [0.94, 1, 0.94],
+                  }
+                : { scale: 1, opacity: 1 }
+            }
+            transition={
+              node.status === "running"
+                ? { duration: 1.8, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }
+                : { duration: 0.15 }
+            }
+          >
+            {node.status}
+          </motion.span>
           <button type="button" className="code-cell__run" onClick={handleRun} disabled={!manager}>
             Run
           </button>
@@ -165,6 +183,6 @@ export default function NotebookCell({ nodeId }: { nodeId: string }) {
         <span className="code-cell__output-label">Output</span>
         <pre className="code-cell__output-text">{output?.text ?? ""}</pre>
       </section>
-    </article>
+    </motion.article>
   );
 }

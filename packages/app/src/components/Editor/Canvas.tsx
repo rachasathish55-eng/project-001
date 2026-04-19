@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   addEdge,
   applyEdgeChanges,
@@ -82,15 +82,48 @@ export default function Canvas() {
   const updateNode = useStore((state) => state.updateNode);
   const deleteNode = useStore((state) => state.deleteNode);
   const setEdges = useStore((state) => state.setEdges);
+  const removalTimers = useRef(new Map<string, number>());
 
   const flowNodes = useMemo(() => toFlowNodes(nodes), [nodes]);
   const flowEdges = useMemo(() => toFlowEdges(edges), [edges]);
+
+  useEffect(
+    () => () => {
+      for (const timer of removalTimers.current.values()) {
+        window.clearTimeout(timer);
+      }
+      removalTimers.current.clear();
+    },
+    [],
+  );
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
       for (const change of changes) {
         if (change.type === "remove") {
-          deleteNode(change.id);
+          const currentNode = nodes.find((entry) => entry.id === change.id);
+          if (!currentNode) {
+            deleteNode(change.id);
+            continue;
+          }
+
+          if (removalTimers.current.has(change.id)) {
+            continue;
+          }
+
+          updateNode(change.id, {
+            metadata: {
+              ...(currentNode.metadata ?? {}),
+              exiting: true,
+            },
+          });
+
+          const timer = window.setTimeout(() => {
+            removalTimers.current.delete(change.id);
+            deleteNode(change.id);
+          }, 180);
+
+          removalTimers.current.set(change.id, timer);
           continue;
         }
 
