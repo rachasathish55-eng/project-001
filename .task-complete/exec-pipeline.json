@@ -1,0 +1,1 @@
+{"task_id":"exec-pipeline","status":"done","files_created":["packages/app/src/components/Header.tsx"],"summary":"Added topological pipeline execution to the Zustand store, wired a run button into the app header, and verified sequential success/failure behavior with tests."}
