@@ -49,7 +49,7 @@ function normalizeStoredEdge(edge: StoredEdge, index: number): Edge | null {
   };
 }
 
-function toFlowEdges(edges: StoredEdge[]): Edge[] {
+function toFlowEdges(edges: any[]): Edge[] {
   return edges.flatMap((edge, index) => {
     const normalized = normalizeStoredEdge(edge, index);
     return normalized ? [normalized] : [];
@@ -78,7 +78,7 @@ function createEdgeId(connection: Connection): string {
 
 export default function Canvas() {
   const nodes = useStore((state) => state.nodes);
-  const edges = useStore((state) => state.edges as StoredEdge[]);
+  const edges = useStore((state) => state.edges);
   const updateNode = useStore((state) => state.updateNode);
   const deleteNode = useStore((state) => state.deleteNode);
   const setEdges = useStore((state) => state.setEdges);
@@ -123,9 +123,9 @@ export default function Canvas() {
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
-      setEdges(applyEdgeChanges(changes, flowEdges));
+      setEdges(applyEdgeChanges(changes, toFlowEdges(useStore.getState().edges)));
     },
-    [flowEdges, setEdges],
+    [setEdges],
   );
 
   const onConnect = useCallback(
@@ -141,9 +141,9 @@ export default function Canvas() {
         markerEnd: { type: MarkerType.ArrowClosed },
       };
 
-      setEdges(addEdge(nextEdge, flowEdges));
+      setEdges(addEdge(nextEdge, toFlowEdges(useStore.getState().edges)));
     },
-    [flowEdges, setEdges],
+    [setEdges],
   );
 
   return (
