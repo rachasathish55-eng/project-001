@@ -3,7 +3,7 @@
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
-  background: #0f1115;
+  background: #0b0d12;
   color: #f5f7fa;
 }
 
@@ -21,81 +21,392 @@ body,
 
 body {
   background:
-    radial-gradient(circle at top, rgba(177, 85, 137, 0.22), transparent 28%),
-    linear-gradient(180deg, #12141b 0%, #0b0d12 100%);
+    radial-gradient(circle at top left, rgba(177, 85, 137, 0.2), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(96, 165, 250, 0.12), transparent 24%),
+    linear-gradient(180deg, #11141b 0%, #0b0d12 100%);
+}
+
+button,
+input,
+textarea {
+  font: inherit;
 }
 
 .app-shell {
   min-height: 100%;
-  display: grid;
-  place-items: center;
-  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
 }
 
-.card {
-  width: min(560px, 100%);
-  padding: 40px;
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 20px 24px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 24px;
-  background: rgba(13, 16, 22, 0.86);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
+  background: rgba(13, 16, 22, 0.84);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(20px);
 }
 
-.eyebrow {
-  margin: 0 0 12px;
+.app-eyebrow,
+.editor-sidebar__label,
+.canvas-shell__panel-label {
+  margin: 0 0 8px;
   color: #ffb7d5;
-  font-size: 0.8rem;
+  font-size: 0.74rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
 }
 
-h1 {
+.app-title,
+.editor-sidebar h2 {
   margin: 0;
-  font-size: clamp(2rem, 4vw, 3.25rem);
   line-height: 1.05;
 }
 
-.description {
-  margin: 16px 0 0;
-  max-width: 40ch;
-  color: rgba(245, 247, 250, 0.76);
-  font-size: 1.05rem;
+.app-title {
+  font-size: clamp(2rem, 4vw, 3.1rem);
+}
+
+.app-description,
+.editor-sidebar p,
+.editor-sidebar li {
+  color: rgba(245, 247, 250, 0.74);
   line-height: 1.6;
 }
 
-.status-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  margin-top: 28px;
+.app-description {
+  margin: 14px 0 0;
+  max-width: 54ch;
 }
 
-.status-grid > div {
-  padding: 16px;
+.app-statusbar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 340px;
+}
+
+.app-pill {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.status-label {
-  display: block;
-  margin-bottom: 8px;
-  color: rgba(245, 247, 250, 0.6);
-  font-size: 0.78rem;
+.app-pill span {
+  color: rgba(245, 247, 250, 0.62);
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
 }
 
-.status-grid strong {
-  display: block;
-  font-size: 1rem;
-  line-height: 1.4;
+.app-pill strong {
+  font-size: 0.98rem;
+  line-height: 1.35;
   word-break: break-word;
 }
 
-@media (max-width: 720px) {
-  .status-grid {
+.app-pill--connected {
+  border-color: rgba(52, 211, 153, 0.28);
+}
+
+.app-pill--connecting,
+.app-pill--reconnecting {
+  border-color: rgba(96, 165, 250, 0.28);
+}
+
+.app-pill--disconnected {
+  border-color: rgba(251, 113, 133, 0.28);
+}
+
+.editor-shell {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 16px;
+}
+
+.editor-sidebar {
+  padding: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  background: rgba(13, 16, 22, 0.72);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.24);
+}
+
+.editor-sidebar h2 {
+  font-size: 1.35rem;
+}
+
+.editor-sidebar p {
+  margin: 12px 0 0;
+}
+
+.editor-sidebar ul {
+  margin: 16px 0 0;
+  padding-left: 18px;
+}
+
+.editor-sidebar li + li {
+  margin-top: 8px;
+}
+
+.editor-canvas {
+  min-height: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  overflow: hidden;
+  background: rgba(10, 12, 18, 0.92);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
+}
+
+.canvas-shell {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.canvas-shell .react-flow {
+  background:
+    radial-gradient(circle at top, rgba(255, 183, 213, 0.05), transparent 28%),
+    linear-gradient(180deg, rgba(12, 15, 20, 0.92) 0%, rgba(8, 10, 14, 0.98) 100%);
+}
+
+.canvas-shell .react-flow__pane {
+  cursor: grab;
+}
+
+.canvas-shell .react-flow__pane:active {
+  cursor: grabbing;
+}
+
+.canvas-shell .react-flow__controls {
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+}
+
+.canvas-shell .react-flow__controls button {
+  background: rgba(18, 22, 31, 0.92);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #f5f7fa;
+}
+
+.canvas-shell .react-flow__controls button:hover {
+  background: rgba(32, 38, 51, 0.96);
+}
+
+.canvas-shell .react-flow__background {
+  opacity: 0.55;
+}
+
+.canvas-shell__panel {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  background: rgba(12, 15, 20, 0.8);
+  backdrop-filter: blur(18px);
+}
+
+.canvas-shell__panel strong {
+  font-size: 0.95rem;
+}
+
+.canvas-shell__minimap {
+  background: rgba(10, 12, 18, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+}
+
+.strawberry-node {
+  position: relative;
+  min-width: 260px;
+  max-width: 320px;
+  padding: 16px 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(25, 29, 39, 0.96), rgba(15, 18, 26, 0.98));
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.36);
+  color: #f5f7fa;
+}
+
+.strawberry-node--idle {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.strawberry-node--queued {
+  border-color: rgba(167, 139, 250, 0.35);
+}
+
+.strawberry-node--running {
+  border-color: rgba(96, 165, 250, 0.5);
+}
+
+.strawberry-node--success {
+  border-color: rgba(52, 211, 153, 0.42);
+}
+
+.strawberry-node--error {
+  border-color: rgba(251, 113, 133, 0.5);
+}
+
+.strawberry-node--stopped {
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+.strawberry-node__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.strawberry-node__titles {
+  min-width: 0;
+}
+
+.strawberry-node__eyebrow {
+  display: block;
+  margin-bottom: 6px;
+  color: rgba(245, 247, 250, 0.58);
+  font-size: 0.71rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.strawberry-node__title {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.strawberry-node__status {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+}
+
+.strawberry-node__status--idle,
+.strawberry-node__status--queued,
+.strawberry-node__status--stopped {
+  background: rgba(148, 163, 184, 0.14);
+  color: #cbd5e1;
+}
+
+.strawberry-node__status--running {
+  background: rgba(96, 165, 250, 0.16);
+  color: #bfdbfe;
+}
+
+.strawberry-node__status--success {
+  background: rgba(52, 211, 153, 0.16);
+  color: #a7f3d0;
+}
+
+.strawberry-node__status--error {
+  background: rgba(251, 113, 133, 0.16);
+  color: #fecdd3;
+}
+
+.strawberry-node__footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.strawberry-node__language,
+.strawberry-node__worker {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(245, 247, 250, 0.84);
+  font-size: 0.76rem;
+}
+
+.strawberry-node__worker {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.strawberry-node__handle {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  background: #141824;
+  box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.03);
+}
+
+.react-flow__node-strawberry {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.react-flow__node.selected .strawberry-node {
+  box-shadow: 0 0 0 1px rgba(255, 183, 213, 0.45), 0 20px 60px rgba(0, 0, 0, 0.36);
+}
+
+.react-flow__edge-path {
+  stroke-width: 2.5;
+}
+
+.react-flow__attribution {
+  display: none;
+}
+
+@media (max-width: 1100px) {
+  .app-header,
+  .editor-shell {
     grid-template-columns: 1fr;
+  }
+
+  .app-header {
+    flex-direction: column;
+  }
+
+  .app-statusbar {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    padding: 14px;
+  }
+
+  .app-header,
+  .editor-sidebar {
+    padding: 18px;
+  }
+
+  .strawberry-node {
+    min-width: 220px;
   }
 }
