@@ -5,7 +5,6 @@ import { EditorView } from "@codemirror/view";
 import { python } from "@codemirror/lang-python";
 import { oneDark } from "@codemirror/theme-one-dark";
 import type { StrawberryNode } from "@strawberry/shared";
-import { useWorkerManager } from "../lib/worker-manager-context";
 import { useStore } from "../store/useStore";
 import WorkerAssignmentSelect from "./WorkerAssignmentSelect";
 
@@ -63,7 +62,9 @@ function formatOutput(node: StrawberryNode): { text: string; tone: "output" | "e
 export default function NotebookCell({ nodeId }: { nodeId: string }) {
   const node = useStore((state) => state.nodes.find((entry) => entry.id === nodeId) ?? null);
   const updateNode = useStore((state) => state.updateNode);
-  const manager = useWorkerManager();
+  const runNode = useStore((state) => state.runNode);
+  const setActiveNodeId = useStore((state) => state.setActiveNodeId);
+  const workerManager = useStore((state) => state.workerManager);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
 
@@ -82,6 +83,16 @@ export default function NotebookCell({ nodeId }: { nodeId: string }) {
           oneDark,
           codeMirrorTheme,
           EditorView.lineWrapping,
+          EditorView.domEventHandlers({
+            focus: () => {
+              setActiveNodeId(nodeId);
+            },
+            blur: () => {
+              if (useStore.getState().activeNodeId === nodeId) {
+                setActiveNodeId(null);
+              }
+            },
+          }),
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) {
               return;
@@ -101,7 +112,7 @@ export default function NotebookCell({ nodeId }: { nodeId: string }) {
       view.destroy();
       viewRef.current = null;
     };
-  }, [node?.id, nodeId, updateNode]);
+  }, [node?.id, nodeId, setActiveNodeId, updateNode]);
 
   useEffect(() => {
     const view = viewRef.current;
@@ -128,19 +139,10 @@ export default function NotebookCell({ nodeId }: { nodeId: string }) {
   }
 
   const handleRun = () => {
-    updateNode(nodeId, {
-      status: "queued",
-      lastError: null,
+    setActiveNodeId(nodeId);
+    void runNode(nodeId).catch((error) => {
+      console.error("Notebook cell execution failed", error);
     });
-
-    try {
-      manager?.exec(nodeId, node.code, node.assignedWorker);
-    } catch (error) {
-      updateNode(nodeId, {
-        status: "error",
-        lastError: error instanceof Error ? error.message : "Failed to start worker execution.",
-      });
-    }
   };
 
   return (
@@ -176,7 +178,7 @@ export default function NotebookCell({ nodeId }: { nodeId: string }) {
               {node.status}
             </motion.span>
           </AnimatePresence>
-          <button type="button" className="code-cell__run" onClick={handleRun} disabled={!manager}>
+          <button type="button" className="code-cell__run" onClick={handleRun} disabled={!workerManager}>
             Run
           </button>
         </div>

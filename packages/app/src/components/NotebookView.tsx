@@ -1,36 +1,17 @@
 import { AnimatePresence, motion } from "framer-motion";
-import type { StrawberryNode } from "@strawberry/shared";
 import NotebookCell from "./NotebookCell";
 import { useStore } from "../store/useStore";
-
-function createScriptNode(index: number): StrawberryNode {
-  const suffix = index + 1;
-  return {
-    id: `script-${Date.now()}-${suffix}`,
-    type: "script",
-    name: `Script ${suffix}`,
-    code: "",
-    language: "python",
-    inputs: [],
-    outputs: [],
-    position: {
-      x: 0,
-      y: index * 220,
-    },
-    status: "idle" as const,
-    lastOutput: null,
-    lastError: null,
-    runDuration: null,
-    assignedWorker: null,
-  };
-}
+import { createScriptNode } from "../lib/node-templates";
 
 export default function NotebookView() {
   const nodes = useStore((state) => state.nodes);
   const addNode = useStore((state) => state.addNode);
+  const setActiveNodeId = useStore((state) => state.setActiveNodeId);
 
   const handleAddNode = () => {
-    addNode(createScriptNode(nodes.length));
+    const node = createScriptNode(nodes.length);
+    addNode(node);
+    setActiveNodeId(node.id);
   };
 
   return (

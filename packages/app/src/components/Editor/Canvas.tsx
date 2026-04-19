@@ -82,6 +82,7 @@ export default function Canvas() {
   const updateNode = useStore((state) => state.updateNode);
   const deleteNode = useStore((state) => state.deleteNode);
   const setEdges = useStore((state) => state.setEdges);
+  const setActiveNodeId = useStore((state) => state.setActiveNodeId);
   const removalTimers = useRef(new Map<string, number>());
 
   const flowNodes = useMemo(() => toFlowNodes(nodes), [nodes]);
@@ -179,6 +180,17 @@ export default function Canvas() {
     [setEdges],
   );
 
+  const onNodeClick = useCallback(
+    (_event: unknown, node: Node<StrawberryNodeData>) => {
+      setActiveNodeId(node.id);
+    },
+    [setActiveNodeId],
+  );
+
+  const onPaneClick = useCallback(() => {
+    setActiveNodeId(null);
+  }, [setActiveNodeId]);
+
   return (
     <div className="canvas-shell">
       <ReactFlowProvider>
@@ -189,6 +201,8 @@ export default function Canvas() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onNodeClick={onNodeClick}
+          onPaneClick={onPaneClick}
           fitView
           snapToGrid
           snapGrid={[16, 16]}

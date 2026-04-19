@@ -36,6 +36,7 @@ export interface StoreState {
   workerManager: PipelineWorkerManager | null;
   connectionState: "disconnected" | "connecting" | "connected" | "reconnecting";
   terminalEntries: TerminalLogEntry[];
+  activeNodeId: string | null;
   addNode: (node: StrawberryNode) => void;
   updateNode: (id: string, updates: Partial<StrawberryNode>) => void;
   deleteNode: (id: string) => void;
@@ -46,6 +47,8 @@ export interface StoreState {
   appendTerminalEntries: (entries: TerminalLogEntry[]) => void;
   clearTerminalEntries: () => void;
   setWorkerManager: (manager: PipelineWorkerManager | null) => void;
+  setActiveNodeId: (nodeId: string | null) => void;
+  runNode: (nodeId: string) => Promise<void>;
   runPipeline: () => Promise<void>;
   upsertWorker: (worker: WorkerRecord) => void;
   markWorkerOffline: (workerId: string) => void;
@@ -59,6 +62,7 @@ const clampPercent = (value: number | null | undefined) => (typeof value === "nu
 const normalizeNullableString = (value: string | null | undefined) => (typeof value === "string" && value.trim().length > 0 ? value : null);
 const finalPipelineStatuses = new Set<StrawberryNodeStatus>(["success", "error", "stopped"]);
 const activeWorkerStatuses = new Set<WorkerRecord["status"]>(["online", "connecting", "reconnecting"]);
+const executableNodeTypes = new Set<StrawberryNode["type"]>(["script", "model"]);
 
 const pickPrimaryWorker = (workers: WorkerRecord[]) => sortWorkers(workers).find((worker) => activeWorkerStatuses.has(worker.status)) ?? null;
 
@@ -81,6 +85,20 @@ function waitForNodeStatus(nodeId: string): Promise<StrawberryNodeStatus> {
 
 function createPipelineError(nodeId: string, status: StrawberryNodeStatus): Error {
   return new Error(`Pipeline aborted at node ${nodeId}: ${status}`);
+}
+
+function getPrimaryWorkerForExecution(workers: WorkerRecord[], assignedWorker: string | null) {
+  const workersById = new Map<string, WorkerRecord>();
+  for (const worker of workers) {
+    workersById.set(worker.id, worker);
+    workersById.set(worker.url, worker);
+    if (worker.workerId) {
+      workersById.set(worker.workerId, worker);
+    }
+  }
+
+  const normalizedAssignedWorker = normalizeNullableString(assignedWorker);
+  return normalizedAssignedWorker ? workersById.get(normalizedAssignedWorker) ?? null : pickPrimaryWorker(workers);
 }
 
 const sortWorkers = (workers: WorkerRecord[]) =>
@@ -107,6 +125,7 @@ export const useStore = create<StoreState>((set) => ({
   workerManager: null,
   connectionState: "disconnected",
   terminalEntries: [],
+  activeNodeId: null,
   addNode: (node) =>
     set((state) => ({
       nodes: [...state.nodes, node],
@@ -164,60 +183,63 @@ export const useStore = create<StoreState>((set) => ({
     set(() => ({
       workerManager: manager,
     })),
+  setActiveNodeId: (nodeId) =>
+    set(() => ({
+      activeNodeId: nodeId,
+    })),
+  runNode: async (nodeId: string) => {
+    const state = useStore.getState();
+    const node = state.nodes.find((entry) => entry.id === nodeId);
+    if (!node || !executableNodeTypes.has(node.type)) {
+      return;
+    }
+
+    const manager = state.workerManager;
+    if (!manager) {
+      throw new Error("Node execution requires an active WorkerManager.");
+    }
+
+    useStore.getState().updateNodeStatus(nodeId, "queued");
+
+    const targetWorker = getPrimaryWorkerForExecution(state.workers, node.assignedWorker);
+    if (!targetWorker) {
+      const assignedWorker = normalizeNullableString(node.assignedWorker);
+      const error = assignedWorker
+        ? new Error(`Assigned worker ${assignedWorker} is not connected.`)
+        : new Error("No connected worker is available for node execution.");
+      useStore.getState().updateNode(nodeId, {
+        status: "error",
+        lastError: error.message,
+      });
+      throw error;
+    }
+
+    try {
+      manager.exec(nodeId, node.code, targetWorker.id);
+    } catch (error) {
+      useStore.getState().updateNode(nodeId, {
+        status: "error",
+        lastError: error instanceof Error ? error.message : "Failed to dispatch node execution.",
+      });
+      throw error;
+    }
+
+    const finalStatus = await waitForNodeStatus(nodeId);
+    if (finalStatus !== "success") {
+      throw createPipelineError(nodeId, finalStatus);
+    }
+  },
   runPipeline: async () => {
     const state = useStore.getState();
-    const manager = state.workerManager;
-
-    if (!manager) {
-      throw new Error("Pipeline execution requires an active WorkerManager.");
-    }
-
     const orderedNodeIds = topologicalSort(state.nodes, state.edges as EdgeLike[]);
-    const nodesById = new Map(state.nodes.map((node) => [node.id, node] as const));
-    const workersById = new Map<string, WorkerRecord>();
-    for (const worker of state.workers) {
-      workersById.set(worker.id, worker);
-      workersById.set(worker.url, worker);
-      if (worker.workerId) {
-        workersById.set(worker.workerId, worker);
-      }
-    }
 
     for (const nodeId of orderedNodeIds) {
-      const node = nodesById.get(nodeId);
-      if (!node || (node.type !== "script" && node.type !== "model")) {
+      const node = state.nodes.find((entry) => entry.id === nodeId);
+      if (!node || !executableNodeTypes.has(node.type)) {
         continue;
       }
 
-      useStore.getState().updateNodeStatus(nodeId, "queued");
-
-      const assignedWorker = normalizeNullableString(node.assignedWorker);
-      const targetWorker = assignedWorker ? workersById.get(assignedWorker) ?? null : pickPrimaryWorker(state.workers);
-      if (!targetWorker) {
-        const error = assignedWorker
-          ? new Error(`Assigned worker ${assignedWorker} is not connected.`)
-          : new Error("No connected worker is available for pipeline execution.");
-        useStore.getState().updateNode(nodeId, {
-          status: "error",
-          lastError: error.message,
-        });
-        throw error;
-      }
-
-      try {
-        manager.exec(nodeId, node.code, targetWorker.id);
-      } catch (error) {
-        useStore.getState().updateNode(nodeId, {
-          status: "error",
-          lastError: error instanceof Error ? error.message : "Failed to dispatch pipeline execution.",
-        });
-        throw error;
-      }
-
-      const finalStatus = await waitForNodeStatus(nodeId);
-      if (finalStatus !== "success") {
-        throw createPipelineError(nodeId, finalStatus);
-      }
+      await useStore.getState().runNode(nodeId);
     }
   },
   upsertWorker: (worker) =>
