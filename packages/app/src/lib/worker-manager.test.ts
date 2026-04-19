@@ -96,7 +96,7 @@ describe("WorkerManager", () => {
     expect(JSON.parse(socket.sent[0])).toMatchObject({
       id: commandId,
       type: "command",
-      command: "run_script",
+      command: "exec",
       data: {
         code: "print('ok')",
         node_id: "node-1",

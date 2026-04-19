@@ -134,7 +134,7 @@ export class WorkerManager {
     this.send({
       id: commandId,
       type: "command",
-      command: "run_script",
+      command: "exec",
       data: {
         code,
         node_id: nodeId,
