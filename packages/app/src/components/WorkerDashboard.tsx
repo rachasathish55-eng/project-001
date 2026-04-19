@@ -161,7 +161,9 @@ export default function WorkerDashboard({
           <span className="worker-dashboard__eyebrow">Workers</span>
           <h2 className="worker-dashboard__title">Worker dashboard</h2>
           <p className="worker-dashboard__description">
-            {connectionState === "connected" || connectionState === "connecting"
+            {connectionState === "reconnecting"
+              ? "Reconnecting to the worker daemon and refreshing telemetry."
+              : connectionState === "connected" || connectionState === "connecting"
               ? "Monitoring live telemetry from connected Claw workers."
               : "Waiting for the worker daemon to connect."}
           </p>

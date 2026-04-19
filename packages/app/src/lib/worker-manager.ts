@@ -85,8 +85,8 @@ export interface WorkerManagerOptions {
 const OPEN_STATE = 1;
 const DEFAULT_URL = "ws://localhost:7331";
 const DEFAULT_HEARTBEAT_MS = 5000;
-const DEFAULT_RECONNECT_BASE_MS = 500;
-const DEFAULT_RECONNECT_MAX_MS = 10000;
+const DEFAULT_RECONNECT_BASE_MS = 1000;
+const DEFAULT_RECONNECT_MAX_MS = 60000;
 
 const appendChunk = (existing: string | null, chunk: string) => (existing && existing.length > 0 ? `${existing}${chunk}` : chunk);
 
@@ -340,6 +340,7 @@ export class WorkerManager {
       this.syncWorkerRecord(connection, "connecting");
       this.flushQueue(connection);
       this.startHeartbeat(connection);
+      this.requestStatus(connection.id);
       this.refreshConnectionState();
     };
 
@@ -399,13 +400,18 @@ export class WorkerManager {
     }
 
     connection.activeExecutions.clear();
+    connection.pendingCommands.clear();
+    if (!this.disposed && !connection.disposed) {
+      connection.status = "reconnecting";
+      this.syncWorkerRecord(connection, "reconnecting");
+      this.refreshConnectionState();
+      this.scheduleReconnect(connection);
+      return;
+    }
+
     connection.status = "offline";
     this.syncWorkerRecord(connection, "offline");
     this.refreshConnectionState();
-
-    if (!this.disposed) {
-      this.scheduleReconnect(connection);
-    }
   }
 
   private handleMessage(connection: ManagedConnection, rawMessage: string): void {
@@ -662,6 +668,8 @@ export class WorkerManager {
     }
 
     const delay = Math.min(this.reconnectBaseDelayMs * 2 ** connection.reconnectAttempts, this.reconnectMaxDelayMs);
+    const attemptNumber = connection.reconnectAttempts + 1;
+    console.info(`WorkerManager reconnecting ${connection.id} in ${delay}ms (attempt ${attemptNumber})`);
     connection.reconnectAttempts += 1;
     connection.status = "reconnecting";
     this.syncWorkerRecord(connection, "reconnecting");

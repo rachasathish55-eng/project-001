@@ -754,6 +754,34 @@ textarea {
   min-width: 0;
 }
 
+.worker-select__status {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.worker-select__status--online {
+  background: var(--success-soft);
+  color: var(--success-text);
+}
+
+.worker-select__status--connecting,
+.worker-select__status--reconnecting {
+  background: var(--info-soft);
+  color: var(--info-text);
+}
+
+.worker-select__status--offline {
+  background: var(--neutral-soft);
+  color: var(--neutral-text);
+}
+
 .worker-select__label {
   color: var(--text-subtle);
   font-size: 0.7rem;

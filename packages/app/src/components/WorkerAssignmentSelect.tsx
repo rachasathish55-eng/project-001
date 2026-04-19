@@ -50,6 +50,11 @@ export default function WorkerAssignmentSelect({
           </option>
         ))}
       </select>
+      {selectedWorker ? (
+        <span className={`worker-select__status worker-select__status--${selectedWorker.status}`}>
+          {selectedWorker.status}
+        </span>
+      ) : null}
     </label>
   );
 }

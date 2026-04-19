@@ -101,7 +101,7 @@ describe("WorkerManager", () => {
 
   it("sends exec commands and applies worker output", () => {
     const commandId = manager.exec("node-1", "print('ok')");
-    expect(JSON.parse(socket.sent[0])).toMatchObject({
+    expect(JSON.parse(socket.sent.at(-1) ?? "{}")).toMatchObject({
       id: commandId,
       type: "command",
       command: "exec",
@@ -211,8 +211,9 @@ describe("WorkerManager", () => {
 
     const commandId = manager.exec("node-1", "print('assigned')", "ws://localhost:7332");
 
-    expect(socket.sent).toHaveLength(0);
-    expect(JSON.parse(secondSocket?.sent[0] ?? "{}")).toMatchObject({
+    expect(socket.sent.every((entry) => JSON.parse(entry).command !== "exec")).toBe(true);
+    const assignedCommand = secondSocket?.sent.map((entry) => JSON.parse(entry)).find((entry) => entry.command === "exec");
+    expect(assignedCommand).toMatchObject({
       id: commandId,
       command: "exec",
       data: {
@@ -235,5 +236,142 @@ describe("WorkerManager", () => {
         lastError: expect.stringContaining("Worker disconnected"),
       }),
     );
+  });
+
+  it("reconnects workers with exponential backoff and refreshes telemetry", () => {
+    manager.dispose();
+    useStore.setState({
+      nodes: [],
+      edges: [],
+      workers: [],
+      workerStats: null,
+      workerManager: null,
+      connectionState: "disconnected",
+      terminalEntries: [],
+      activeNodeId: null,
+    });
+
+    const initialSocket = new FakeSocket();
+    const recoveredSocket = new FakeSocket();
+    const socketFactoryCalls: Array<FakeSocket | null> = [];
+    const outcomes = [initialSocket, null, null, recoveredSocket];
+    const reconnectManager = new WorkerManager({
+      socketFactory: () => {
+        const nextSocket = outcomes.shift() ?? null;
+        socketFactoryCalls.push(nextSocket);
+        return nextSocket;
+      },
+      heartbeatIntervalMs: 5000,
+      reconnectBaseDelayMs: 1000,
+      reconnectMaxDelayMs: 60000,
+    });
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+
+    initialSocket.open();
+    initialSocket.message(
+      JSON.stringify({
+        type: "identity",
+        worker_id: "worker-1",
+        hostname: "worker-host",
+        os: "Linux 6.8",
+        pid: 99,
+        version: "1.2.3",
+      }),
+    );
+    initialSocket.message(
+      JSON.stringify({
+        type: "telemetry",
+        ts: 123,
+        cpu_pct: 31.2,
+        mem_pct: 45.6,
+        gpu_pct: 12.5,
+      }),
+    );
+
+    initialSocket.close();
+
+    expect(useStore.getState().workers[0]).toEqual(
+      expect.objectContaining({
+        status: "reconnecting",
+      }),
+    );
+
+    vi.advanceTimersByTime(999);
+    expect(socketFactoryCalls).toHaveLength(1);
+
+    vi.advanceTimersByTime(1);
+    expect(socketFactoryCalls).toHaveLength(2);
+
+    vi.advanceTimersByTime(1999);
+    expect(socketFactoryCalls).toHaveLength(2);
+
+    vi.advanceTimersByTime(1);
+    expect(socketFactoryCalls).toHaveLength(3);
+
+    vi.advanceTimersByTime(3999);
+    expect(socketFactoryCalls).toHaveLength(3);
+
+    vi.advanceTimersByTime(1);
+    expect(socketFactoryCalls).toHaveLength(4);
+
+    recoveredSocket.open();
+    const statusCommand = JSON.parse(recoveredSocket.sent.find((entry) => JSON.parse(entry).command === "get_status") ?? "{}");
+    expect(statusCommand).toMatchObject({
+      type: "request",
+      command: "get_status",
+    });
+
+    const statusCommandId = statusCommand.id as string;
+    recoveredSocket.message(
+      JSON.stringify({
+        type: "identity",
+        worker_id: "worker-1",
+        hostname: "worker-host",
+        os: "Linux 6.8",
+        pid: 101,
+        version: "1.2.4",
+      }),
+    );
+    recoveredSocket.message(
+      JSON.stringify({
+        id: statusCommandId,
+        type: "result",
+        data: {
+          ts: 456,
+          cpu_pct: 18.4,
+          mem_pct: 21.7,
+          gpu_pct: 2.5,
+        },
+      }),
+    );
+
+    expect(useStore.getState().workers).toEqual([
+      expect.objectContaining({
+        id: "ws://localhost:7331",
+        status: "online",
+        workerId: "worker-1",
+        hostname: "worker-host",
+        pid: 101,
+        version: "1.2.4",
+      }),
+    ]);
+    expect(useStore.getState().workerStats).toEqual(
+      expect.objectContaining({
+        cpuPct: 18.4,
+        memPct: 21.7,
+        gpuPct: 2.5,
+        workerId: "worker-1",
+        hostname: "worker-host",
+      }),
+    );
+    expect(useStore.getState().connectionState).toBe("connected");
+    expect(infoSpy.mock.calls.map((call) => call[0])).toEqual([
+      expect.stringContaining("1000ms"),
+      expect.stringContaining("2000ms"),
+      expect.stringContaining("4000ms"),
+    ]);
+
+    infoSpy.mockRestore();
+    reconnectManager.dispose();
   });
 });
