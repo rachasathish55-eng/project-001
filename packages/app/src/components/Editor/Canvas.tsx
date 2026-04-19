@@ -163,11 +163,11 @@ export default function Canvas() {
           maxZoom={1.75}
           defaultEdgeOptions={{
             type: "smoothstep",
-            style: { stroke: "rgba(255, 183, 213, 0.75)", strokeWidth: 2 },
+            style: { stroke: "var(--accent)", strokeWidth: 2 },
           }}
           proOptions={{ hideAttribution: true }}
         >
-          <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="rgba(255, 255, 255, 0.08)" />
+          <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="var(--border-color)" />
           <Controls />
           <MiniMap
             pannable
@@ -175,10 +175,10 @@ export default function Canvas() {
             className="canvas-shell__minimap"
             nodeColor={(node) => {
               const status = (node.data as StrawberryNodeData | undefined)?.status;
-              if (status === "success") return "#34d399";
-              if (status === "running") return "#60a5fa";
-              if (status === "error") return "#fb7185";
-              return "#8b5cf6";
+               if (status === "success") return "#34d399";
+               if (status === "running") return "#60a5fa";
+               if (status === "error") return "#fb7185";
+               return "#7c4dff";
             }}
           />
           <Panel position="top-left">

@@ -7,6 +7,45 @@ import type { StrawberryNode } from "@strawberry/shared";
 import { useWorkerManager } from "../lib/worker-manager-context";
 import { useStore } from "../store/useStore";
 
+const codeMirrorTheme = EditorView.theme(
+  {
+    "&": {
+      backgroundColor: "var(--bg-surface)",
+      color: "var(--text-main)",
+    },
+    ".cm-scroller": {
+      backgroundColor: "var(--bg-surface)",
+    },
+    ".cm-content": {
+      caretColor: "var(--accent)",
+    },
+    ".cm-gutters": {
+      backgroundColor: "var(--bg-panel)",
+      color: "var(--text-subtle)",
+      borderRight: "1px solid var(--border-color)",
+    },
+    ".cm-activeLine, .cm-activeLineGutter": {
+      backgroundColor: "var(--bg-panel-alt)",
+    },
+    ".cm-cursor, .cm-dropCursor": {
+      borderLeftColor: "var(--accent)",
+    },
+    "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": {
+      backgroundColor: "var(--accent-soft) !important",
+    },
+    ".cm-tooltip": {
+      backgroundColor: "var(--bg-panel)",
+      border: "1px solid var(--border-color)",
+      color: "var(--text-main)",
+    },
+    ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
+      backgroundColor: "var(--bg-panel-alt)",
+      color: "var(--text-main)",
+    },
+  },
+  { dark: true },
+);
+
 function formatOutput(node: StrawberryNode): { text: string; tone: "output" | "error" | "empty" } {
   if (node.lastError) {
     return { text: node.lastError, tone: "error" };
@@ -39,6 +78,7 @@ export default function CodeCell({ nodeId }: { nodeId: string }) {
         extensions: [
           python(),
           oneDark,
+          codeMirrorTheme,
           EditorView.lineWrapping,
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) {
