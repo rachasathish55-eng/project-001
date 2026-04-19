@@ -833,6 +833,11 @@ textarea {
     monospace;
 }
 
+.code-cell__console {
+  display: grid;
+  gap: 10px;
+}
+
 .code-cell__output {
   display: grid;
   gap: 8px;
@@ -865,16 +870,20 @@ textarea {
   color: var(--text-subtle);
 }
 
+.code-cell__output--stdout {
+  border-color: rgba(96, 165, 250, 0.16);
+}
+
+.code-cell__output--stdout .code-cell__output-text {
+  color: var(--text-main);
+}
+
 .code-cell__output--error {
   border-color: rgba(251, 113, 133, 0.18);
 }
 
 .code-cell__output--error .code-cell__output-text {
   color: var(--error-text);
-}
-
-.code-cell__output--output {
-  border-color: rgba(96, 165, 250, 0.16);
 }
 
 .terminal-panel {
