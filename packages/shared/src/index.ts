@@ -3,12 +3,23 @@ export interface StrawberryPosition {
   y: number;
 }
 
+export type StrawberryNodeStatus = "idle" | "queued" | "running" | "success" | "error" | "stopped";
+
 export interface StrawberryNode {
   id: string;
   type: string;
+  name: string;
+  code: string;
+  language: string;
+  inputs: string[];
+  outputs: string[];
   position: StrawberryPosition;
+  status: StrawberryNodeStatus;
+  lastOutput: string | null;
+  lastError: string | null;
+  runDuration: number | null;
+  assignedWorker: string | null;
   label?: string;
-  name?: string;
   data?: Record<string, unknown>;
   parentId?: string | null;
   width?: number;

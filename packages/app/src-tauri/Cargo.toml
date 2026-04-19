@@ -6,11 +6,10 @@ authors = ["Strawberry Studios"]
 edition = "2021"
 
 [build-dependencies]
-tauri-build = { version = "1.5.6" }
+tauri-build = { version = "2.10.1" }
 
 [dependencies]
-tauri = { version = "1.8.2", features = ["api-all"] }
+tauri = { version = "2.10.1" }
 
 [features]
-default = ["custom-protocol"]
-custom-protocol = ["tauri/custom-protocol"]
+default = []
