@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useStore } from "../store/useStore";
+import { loadBerryProject, saveBerryProject } from "../utils/berryFormat";
 
 type ViewMode = "canvas" | "notebook";
 
@@ -10,6 +11,7 @@ export default function Header({
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
 }) {
+  const [isBerryBusy, setIsBerryBusy] = useState(false);
   const nodes = useStore((state) => state.nodes);
   const edges = useStore((state) => state.edges);
   const workers = useStore((state) => state.workers);
@@ -29,6 +31,33 @@ export default function Header({
     });
   };
 
+  const handleSaveProject = async () => {
+    setIsBerryBusy(true);
+
+    try {
+      await saveBerryProject(viewMode);
+    } catch (error) {
+      console.error("Berry export failed", error);
+    } finally {
+      setIsBerryBusy(false);
+    }
+  };
+
+  const handleLoadProject = async () => {
+    setIsBerryBusy(true);
+
+    try {
+      const loadedViewMode = await loadBerryProject();
+      if (loadedViewMode) {
+        onViewModeChange(loadedViewMode);
+      }
+    } catch (error) {
+      console.error("Berry import failed", error);
+    } finally {
+      setIsBerryBusy(false);
+    }
+  };
+
   return (
     <header className="app-header">
       <div className="app-header__top">
@@ -41,11 +70,20 @@ export default function Header({
         </div>
 
         <div className="app-header__actions">
+          <div className="app-header__file-actions">
+            <button type="button" className="app-header__file-action" onClick={handleSaveProject} disabled={isBerryBusy}>
+              Save .berry
+            </button>
+            <button type="button" className="app-header__file-action" onClick={handleLoadProject} disabled={isBerryBusy}>
+              Load .berry
+            </button>
+          </div>
+
           <button
             type="button"
             className="app-header__run-pipeline"
             onClick={handleRunPipeline}
-            disabled={!workerManager || !hasExecutableNodes}
+            disabled={isBerryBusy || !workerManager || !hasExecutableNodes}
           >
             <svg viewBox="0 0 24 24" aria-hidden="true" className="app-header__run-icon">
               <path d="M8 5v14l11-7z" />

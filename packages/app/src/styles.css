@@ -70,6 +70,12 @@ textarea {
   justify-content: flex-end;
 }
 
+.app-header__file-actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .app-eyebrow,
 .editor-sidebar__label,
 .canvas-shell__panel-label {
@@ -180,6 +186,25 @@ textarea {
 }
 
 .app-header__run-pipeline:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.app-header__file-action {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #f5f7fa;
+  cursor: pointer;
+}
+
+.app-header__file-action:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.app-header__file-action:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
