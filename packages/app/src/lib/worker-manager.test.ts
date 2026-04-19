@@ -77,6 +77,7 @@ describe("WorkerManager", () => {
       workerManager: null,
       connectionState: "disconnected",
       terminalEntries: [],
+      activeNodeId: null,
     });
     useStore.getState().addNode(createNode("node-1"));
     manager = new WorkerManager({

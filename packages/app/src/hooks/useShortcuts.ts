@@ -3,7 +3,7 @@ import { useEffect } from "react";
 type ShortcutHandlers = {
   onOpenCommandPalette: () => void;
   onSaveProject: () => void;
-  onRunFocusedNode: () => void;
+  onRunFocusedNode: () => boolean;
   onToggleWorkerDashboard: () => void;
 };
 
@@ -60,8 +60,9 @@ export function useShortcuts({
           return;
         }
 
-        event.preventDefault();
-        onRunFocusedNode();
+        if (onRunFocusedNode()) {
+          event.preventDefault();
+        }
       }
     };
 

@@ -32,6 +32,7 @@ describe("useStore", () => {
       workerManager: null,
       connectionState: "disconnected",
       terminalEntries: [],
+      activeNodeId: null,
     });
   });
 
@@ -53,6 +54,7 @@ describe("useStore", () => {
     useStore.setState({
       nodes: [node, createNode("node-2")],
       edges: [{ source: "node-1", target: "node-2" }],
+      activeNodeId: null,
     });
 
     useStore.getState().deleteNode("node-1");
@@ -198,6 +200,7 @@ describe("useStore", () => {
         },
       ],
       workerManager: manager,
+      activeNodeId: null,
     });
 
     await useStore.getState().runPipeline();
@@ -243,6 +246,7 @@ describe("useStore", () => {
           version: "1.0.0",
         },
       ],
+      activeNodeId: null,
     });
 
     await expect(useStore.getState().runPipeline()).rejects.toThrow("Pipeline aborted at node node-a: error");

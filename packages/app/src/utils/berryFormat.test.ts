@@ -32,6 +32,7 @@ describe("berryFormat", () => {
       workerManager: null,
       connectionState: "disconnected",
       terminalEntries: [],
+      activeNodeId: null,
     });
   });
 
@@ -67,7 +68,7 @@ describe("berryFormat", () => {
         pid: 42,
         version: "1.0.0",
       },
-    ],
+      ],
       workerStats: {
         ts: 123,
         cpuPct: 44.5,
@@ -90,6 +91,7 @@ describe("berryFormat", () => {
           workerId: "worker-1",
         },
       ],
+      activeNodeId: null,
     });
 
     const archive = await createBerryArchive(createBerryProjectDocument("notebook"));
@@ -103,6 +105,7 @@ describe("berryFormat", () => {
       workerManager: null,
       connectionState: "disconnected",
       terminalEntries: [],
+      activeNodeId: null,
     });
 
     applyBerryProject(loaded);

@@ -1,7 +1,8 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useState } from "react";
-import { useStore, type WorkerRecord } from "../store/useStore";
+import { useEffect, useRef, useState } from "react";
+import type { WorkerRecord } from "../store/useStore";
 import { useWorkerManager } from "../lib/worker-manager-context";
+import { useStore } from "../store/useStore";
 
 const percentFormatter = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 1,
@@ -115,14 +116,17 @@ function WorkerCard({ worker }: { worker: WorkerRecord }) {
 export default function WorkerDashboard({
   isOpen,
   onToggle,
+  focusConnectSignal,
 }: {
   isOpen: boolean;
   onToggle: () => void;
+  focusConnectSignal: number;
 }) {
   const workers = useStore((state) => state.workers);
   const connectionState = useStore((state) => state.connectionState);
   const manager = useWorkerManager();
   const [workerUrl, setWorkerUrl] = useState("ws://localhost:7332");
+  const workerInputRef = useRef<HTMLInputElement | null>(null);
   const onlineCount = workers.filter((worker) => worker.status === "online").length;
 
   const handleConnectWorker = () => {
@@ -134,6 +138,15 @@ export default function WorkerDashboard({
     manager?.connectWorker(nextUrl);
     setWorkerUrl(nextUrl);
   };
+
+  useEffect(() => {
+    if (!isOpen || focusConnectSignal === 0) {
+      return;
+    }
+
+    workerInputRef.current?.focus();
+    workerInputRef.current?.select();
+  }, [focusConnectSignal, isOpen]);
 
   return (
     <motion.aside
@@ -181,6 +194,7 @@ export default function WorkerDashboard({
           >
             <div className="worker-dashboard__composer">
               <input
+                ref={workerInputRef}
                 className="worker-dashboard__input"
                 value={workerUrl}
                 onChange={(event) => setWorkerUrl(event.target.value)}

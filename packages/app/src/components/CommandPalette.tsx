@@ -85,6 +85,7 @@ export default function CommandPalette({
                       key={action.id}
                       className="command-palette__item"
                       value={action.label}
+                      disabled={action.disabled}
                       keywords={[action.description, ...(action.keywords ?? [])]}
                       onSelect={() => {
                         onOpenChange(false);

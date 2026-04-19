@@ -149,6 +149,7 @@ export function applyBerryProject(document: BerryProjectDocument): void {
     workerStats: document.store.workerStats,
     connectionState: document.store.connectionState,
     terminalEntries: document.store.terminalEntries,
+    activeNodeId: null,
   });
 }
 

@@ -138,10 +138,12 @@ export const useStore = create<StoreState>((set) => ({
     set((state) => ({
       nodes: state.nodes.filter((node) => node.id !== id),
       edges: state.edges.filter((edge) => !touchesNode(edge as EdgeLike, id)),
+      activeNodeId: state.activeNodeId === id ? null : state.activeNodeId,
     })),
   setNodes: (nodes) =>
-    set(() => ({
+    set((state) => ({
       nodes,
+      activeNodeId: nodes.some((node) => node.id === state.activeNodeId) ? state.activeNodeId : null,
     })),
   setEdges: (edges) =>
     set(() => ({
